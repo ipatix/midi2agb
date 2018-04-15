@@ -1,0 +1,3 @@
+[submodule "cppmidi"]
+	path = cppmidi
+	url = https://github.com/ipatix/cppmidi
