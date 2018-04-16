@@ -86,14 +86,14 @@ int main(int argc, char *argv[]) {
                 int prio = stoi(std::string(argv[i]));
                 if (prio < 0 || prio > 127)
                     die("-p: parameter %d out of range\n", prio);
-                arg_pri = static_cast<uint8_t>(arg_pri);
+                arg_pri = static_cast<uint8_t>(prio);
             } else if (!st.compare("-r")) {
                 if (++i >= argc)
                     die("-r: missing parameter\n");
                 int rev = stoi(std::string(argv[i]));
                 if (rev < 0 || rev > 127)
                     die("-r: parameter %d out of range\n", rev);
-                arg_pri = static_cast<uint8_t>(arg_pri);
+                arg_rev = static_cast<uint8_t>(rev);
             } else if (!st.compare("-n")) {
                 arg_natural = true;
             } else if (!st.compare("-e")) {
