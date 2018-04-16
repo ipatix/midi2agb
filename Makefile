@@ -1,6 +1,6 @@
-CXX = g++
+CXX = clang++
 STRIP = strip
-CFLAGS = -Werror -Wall -Wextra -Wconversion -std=c99 -O2 -DNDEBUG
+CXXFLAGS = -Wall -Wextra -Wconversion -std=c++14 -O2 -DNDEBUG
 BINARY = midi2agb
 LIBS = 
 
