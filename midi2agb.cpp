@@ -1,9 +1,11 @@
 #include <string>
+#include <algorithm>
 
 #include <cstdio>
 #include <cstdlib>
 #include <cstdint>
 #include <cstdarg>
+#include <cmath>
 
 #include "cppmidi/cppmidi.h"
 
@@ -54,9 +56,13 @@ static bool arg_input_file_read = false;
 static std::string arg_output_file;
 static bool arg_output_file_read = false;
 
-static uint32_t loop_start = 0;
-static uint32_t loop_end = 0;
-static bool loop_present = false;
+static cppmidi::midi_file mf;
+
+static void midi_read_special_events();
+static void midi_remove_empty_tracks();
+static void midi_filter_volume();
+static void midi_loop_and_state_reset();
+static void midi_remove_redundant_events();
 
 int main(int argc, char *argv[]) {
     try {
@@ -143,19 +149,163 @@ int main(int argc, char *argv[]) {
         }
 
         // load midi file
-        cppmidi::midi_file mf;
         mf.load_from_file(arg_input_file);
 
         // 24 clocks per quarter note is pretty much the standard for GBA
         mf.convert_time_division(24);
 
         // apply scales, loop fix
-        // TODO, do this later
+        midi_read_special_events();
+        midi_remove_empty_tracks();
+        midi_filter_volume();
+        midi_loop_and_state_reset();
+        midi_remove_redundant_events();
+        // TODO
     } catch (const cppmidi::xcept& ex) {
         fprintf(stderr, "cppmidi lib error:\n%s\n", ex.what());
         return 1;
     } catch (const std::exception& ex) {
         fprintf(stderr, "std lib error:\n%s\n", ex.what());
         return 1;
+    }
+}
+
+static void midi_read_special_events() {
+    /*
+     * Special Events:
+     * - Meta Marker/Text/Cuepoint "[": loop start for all tracks
+     * - Meta Marker/Text/Cuepoint "]": loop end for all tracks
+     * - Meta Text "modscale=%f": scales modulation by factor %f
+     * - Meta Text "modt_global=%d": set's modulation type for whole song
+     * - Meta Marker/Text/Cuepoint "modt=%d": set's modulation type at position
+     */
+    // TODO
+}
+
+static void midi_remove_empty_tracks() {
+    using namespace cppmidi;
+    midi_track tempo_track;
+
+    // seperate tempo events
+    for (midi_track& trk : mf.midi_tracks) {
+        for (size_t i = 0; i < trk.midi_events.size(); i++) {
+            ev_type type = trk.midi_events[i]->event_type();
+            if (type != ev_type::MetaTempo)
+                continue;
+            tempo_track.midi_events.emplace_back(std::move(trk.midi_events[i]));
+            trk.midi_events.erase(trk.begin() + i--);
+        }
+    }
+
+    tempo_track.sort_events();
+
+    // remove tracks without notes
+    for (size_t trk = 0; trk < mf.midi_tracks.size(); trk++) {
+        // set false if a note event was found
+        bool del = true;
+        for (const midi_event& ev : mf.midi_tracks[trk].midi_events) {
+            if (ev.event_type() == ev_type::MsgNoteOn) {
+                del = false;
+                break;
+            }
+        }
+        mf.midi_tracks.erase(mf.midi_tracks.begin() + trk--);
+    }
+
+    if (mf.midi_tracks.size() == 0)
+        throw std::runtime_error("The MIDI file has no notes!");
+
+    // all empty tracks deleted, now reinsert tempo events to first track
+    for (midi_event& tev : tempo_track.midi_events) {
+        // locate position for insertion
+        auto cmp = [](const unique_ptr<midi_event>& a,
+                const unique_ptr<midi_event>& b) {
+            return a->ticks < b->ticks;
+        };
+        auto position = std::lower_bound(
+                mf.midi_tracks[0].midi_events.begin(),
+                mf.midi_tracks[0].midi_events.end(),
+                tev, cmp);
+        if (position == mf.midi_tracks[0].midi_events.end()) {
+            mf.midi_tracks[0].midi_events.emplace_back(std::move(tev));
+        } else {
+            mf.midi_tracks[0].midi_events.insert(position, std::move(tev));
+        }
+    }
+    // done
+}
+
+static void midi_filter_volume() {
+    using namespace cppmidi;
+
+    auto vol_scale = [](uint8_t vol, uint8_t expr, bool nat) {
+        float x = vol * expr;
+        if (nat) {
+            x /= 127.0f * 127.0f;
+            x = powf(x, 10.0f / 6.0f);
+            x *= 127.0f;
+            x = std:round(x);
+        } else {
+            x /= 127.0f;
+            x = std::round(x);
+        }
+        return static_cast<uint8_t>(std::max(0, std::min(127, static_cast<int>(x))));
+    };
+
+    auto vel_scale = [](uint8_t vel, bool nat) {
+        float x = vel;
+        if (nat) {
+            x /= 127.0f;
+            x = powf(x, 10.0f / 6.0f);
+            x *= 127.0f;
+            x = std:round(x);
+        }
+        // clamp to lower 1 because midi velocity 0 is a note off
+        return static_cast<uint8_t>(std::max(1, std::min(127, static_cast<int>(x))));
+    };
+
+    for (midi_track& mtrk : mf.midi_tracks) {
+        uint8_t volume = 100;
+        uint8_t expression = 127;
+
+        for (size_t i = 0; i < mtrk.midi_events.size(); i++) {
+            midi_event& ev = *mtrk.midi_events[i];
+            if (ev.event_type() == ev_type::MsgController) {
+                controller_message_midi_event& ctrl_ev = 
+                    static_cast<controller_message_midi_event&>(ev);
+                if (ctrl_ev.get_controller() == MIDI_CC_MSB_VOLUME) {
+                    volume = ctrl_ev.get_value();
+                    ctrl_ev.set_value(vol_scale(volume, expression, arg_natural));
+                } else if (ctrl_ev.get_controller() == MIDI_CC_MSB_EXPRESSION) {
+                    expression = ctrl_ev.get_value();
+                    ctrl_ev.set_controller(MIDI_CC_MSB_VOLUME);
+                    ctrl_ev.set_value(vol_scale(volume, expression, arg_natural));
+                }
+            } else if (ev.event_type() == ev_type::MsgNoteOn) {
+                noteon_message_midi_event& note_ev =
+                    static_cast<noteon_message_midi_event&>(ev);
+                note_ev.set_velocity(vel_scale(note_ev.get_velocity()));
+            }
+        }
+    }
+}
+
+static void midi_loop_and_state_reset() {
+    for (midi_track& mtrk : mf.midi_tracks) {
+        uint8_t state_vol = 100;
+        uint8_t state_voice = 0xFF;
+        uint8_t state_pan = 0x40;
+        uint8_t state_tempo = 120 / 2;
+        int16_t state_bend = 0;
+        uint8_t state_bendr = 2;
+        uint8_t state_mod = 0;
+        uint8_t state_modt = 0;
+        uint8_t state_tune = 0;
+        uint8_t state_iecv = 0;
+        uint8_t state_iecl = 0;
+
+        for (size_t i = 0; i < mtrk.midi_events.size(); i++) {
+            // TODO
+        }
     }
 }
