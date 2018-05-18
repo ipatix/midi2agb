@@ -260,7 +260,6 @@ int main(int argc, char *argv[]) {
         midi_remove_empty_tracks();
         midi_apply_filters();
         midi_apply_loop_and_state_reset();
-        err("hello\n");
         midi_remove_redundant_events();
 
         midi_to_agb();
@@ -1152,7 +1151,6 @@ static void midi_to_agb() {
             const timesignature_meta_midi_event& tev =
                 static_cast<timesignature_meta_midi_event&>(*mtrk[ievt]);
             current_bar_len = tev.get_numerator() * 96 / (1 << tev.get_denominator());
-            dbg("bar length is now %u ticks\n", current_bar_len);
 
             if (bar_table.back().num_ticks > 0) {
                 dbg("warning, time signature not aligning with bars\n");
@@ -1160,6 +1158,15 @@ static void midi_to_agb() {
                         bar_table.back().num_ticks, 0);
             }
         }
+    }
+
+    // TODO verify this does what it should. This should make sure that the
+    // last bar is always fully extended incase of missing events.
+    bar_table.back().num_ticks = current_bar_len;
+
+    for (unsigned int i = 0; i < bar_table.size(); i++) {
+        dbg("bar[%u].start_tick = %u\n", i, bar_table[i].start_tick);
+        dbg("bar[%u].num_ticks = %u\n", i, bar_table[i].num_ticks);
     }
 
     // convert to agb events
@@ -1394,7 +1401,7 @@ struct agb_state {
     bool reset_cmd;
 };
 
-static void write_event(std::ofstream& ofs, agb_state& state, const agb_ev& ev) {
+static void write_event(std::ofstream& ofs, agb_state& state, const agb_ev& ev, size_t itrk) {
     static uint8_t len_table[97] = {
         0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
         17, 18, 19, 20, 21, 22, 23, 24, 24, 24, 24, 28, 28, 30, 30,
@@ -1438,11 +1445,11 @@ static void write_event(std::ofstream& ofs, agb_state& state, const agb_ev& ev) 
         }
         break;
     case agb_ev::ty::LOOP_START:
-        agb_out(ofs, "%s_LOOP:\n", arg_sym.c_str());
+        agb_out(ofs, "%s_%zu_LOOP:\n", arg_sym.c_str(), itrk);
         break;
     case agb_ev::ty::LOOP_END:
-        agb_out(ofs, "        .byte   GOTO\n         .word  %s_LOOP\n",
-                arg_sym.c_str());
+        agb_out(ofs, "        .byte   GOTO\n         .word  %s_%zu_LOOP\n",
+                arg_sym.c_str(), itrk);
         break;
     case agb_ev::ty::PRIO:
         agb_out(ofs, "        .byte   PRIO  , %d\n", ev.prio);
@@ -1816,9 +1823,7 @@ outer_continue:
             // assert the bar does does not reference and is referenced at
             // the same time
             assert(!abar.is_referenced || !abar.does_reference);
-            // TODO remove + 1
-            agb_out(fout, "@ %03zu   ----------------------------------------\n",
-                    ibar + 1);
+            agb_out(fout, "@ %03zu   ----------------------------------------\n", ibar);
             if (abar.is_referenced) {
                 agb_out(fout, "%s_%zu_%zu:\n", arg_sym.c_str(), itrk, ibar);
                 state.reset_cmd = true;
@@ -1826,7 +1831,7 @@ outer_continue:
 
             if (!abar.does_reference) {
                 for (size_t ievt = 0; ievt < abar.events.size(); ievt++) {
-                    write_event(fout, state, abar.events[ievt]);
+                    write_event(fout, state, abar.events[ievt], itrk);
                 }
             } else {
                 std::reference_wrapper<agb_bar> key(abar);
@@ -1854,7 +1859,7 @@ outer_continue:
                 if (rept_count <= 1) {
                     if (abar.size() < 5) {
                         for (size_t ievt = 0; ievt < abar.events.size(); ievt++) {
-                            write_event(fout, state, abar.events[ievt]);
+                            write_event(fout, state, abar.events[ievt], itrk);
                         }
                     } else {
                         agb_out(fout, "        .byte   PATT\n");
@@ -1864,7 +1869,7 @@ outer_continue:
                 } else {
                     if (rept_count * abar.size() < 6) {
                         for (size_t ievt = 0; ievt < abar.events.size(); ievt++) {
-                            write_event(fout, state, abar.events[ievt]);
+                            write_event(fout, state, abar.events[ievt], itrk);
                         }
                     } else {
                         agb_out(fout, "        .byte   REPT  , %zu\n", rept_count);
