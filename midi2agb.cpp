@@ -101,7 +101,6 @@ static std::string arg_vgr;
 static uint8_t arg_pri = 0;
 static uint8_t arg_rev = 0;
 static bool arg_natural = false;
-static bool arg_exact = false;
 
 // conditional global event options
 
@@ -178,8 +177,6 @@ int main(int argc, char *argv[]) {
                 arg_rev = static_cast<uint8_t>(rev);
             } else if (!st.compare("-n")) {
                 arg_natural = true;
-            } else if (!st.compare("-e")) {
-                arg_exact = true;
             } else if (!st.compare("-v")) {
                 arg_debug_output = true;
             } else if (!st.compare("--modt")) {
