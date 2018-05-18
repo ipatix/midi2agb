@@ -539,8 +539,8 @@ static void midi_read_infile_arguments() {
 
     // parse meta events
     for (midi_track& mtrk : mf.midi_tracks) {
-        for (size_t i = 0; i < mtrk.midi_events.size(); i++) {
-            const midi_event& ev = *mtrk[i];
+        for (size_t ievt = 0; ievt < mtrk.midi_events.size(); ievt++) {
+            const midi_event& ev = *mtrk[ievt];
             std::string ev_text;
             if (typeid(ev) == typeid(marker_meta_midi_event)) {
                 // marker
@@ -567,7 +567,7 @@ static void midi_read_infile_arguments() {
                 } else if (cev.get_controller() == MIDI_CC_MSB_DATA_ENTRY &&
                         msb_rpn == 0 && lsb_rpn == 0) {
                     // found a bend range command
-                    mtrk[i] = std::make_unique<controller_message_midi_event>(
+                    mtrk[ievt] = std::make_unique<controller_message_midi_event>(
                             cev.ticks, cev.channel(),
                             MIDI_CC_EX_BENDR, cev.get_value());
                 }
@@ -587,7 +587,7 @@ static void midi_read_infile_arguments() {
                 modt = clamp(modt, 0, 2);
                 int channel = trk_get_channel_num(mtrk);
                 if (channel > 0) {
-                    mtrk[i] = std::make_unique<controller_message_midi_event>(
+                    mtrk[ievt] = std::make_unique<controller_message_midi_event>(
                             ev.ticks, channel, MIDI_CC_EX_MODT,
                             static_cast<uint8_t>(modt));
                 }
@@ -601,7 +601,7 @@ static void midi_read_infile_arguments() {
                 tune = clamp(tune, -64, 63);
                 int channel = trk_get_channel_num(mtrk);
                 if (channel > 0) {
-                    mtrk[i] = std::make_unique<controller_message_midi_event>(
+                    mtrk[ievt] = std::make_unique<controller_message_midi_event>(
                             ev.ticks, channel, MIDI_CC_EX_TUNE,
                             static_cast<uint8_t>(tune));
                 }
@@ -610,7 +610,7 @@ static void midi_read_infile_arguments() {
                 lfos = clamp(lfos, 0, 127);
                 int channel = trk_get_channel_num(mtrk);
                 if (channel > 0) {
-                    mtrk[i] = std::make_unique<controller_message_midi_event>(
+                    mtrk[ievt] = std::make_unique<controller_message_midi_event>(
                             ev.ticks, channel, MIDI_CC_EX_LFOS,
                             static_cast<uint8_t>(lfos));
                 }
@@ -624,7 +624,7 @@ static void midi_read_infile_arguments() {
                 lfodl = clamp(lfodl, 0, 127);
                 int channel = trk_get_channel_num(mtrk);
                 if (channel > 0) {
-                    mtrk[i] = std::make_unique<controller_message_midi_event>(
+                    mtrk[ievt] = std::make_unique<controller_message_midi_event>(
                             ev.ticks, channel, MIDI_CC_EX_LFODL,
                             static_cast<uint8_t>(lfodl));
                 }
@@ -638,7 +638,7 @@ static void midi_read_infile_arguments() {
                 prio = clamp(prio, 0, 127);
                 int channel = trk_get_channel_num(mtrk);
                 if (channel > 0) {
-                    mtrk[i] = std::make_unique<controller_message_midi_event>(
+                    mtrk[ievt] = std::make_unique<controller_message_midi_event>(
                             ev.ticks, channel, MIDI_CC_EX_PRIO,
                             static_cast<uint8_t>(prio));
                 }
@@ -718,15 +718,15 @@ static void midi_remove_empty_tracks() {
 
     // seperate tempo events
     for (midi_track& mtrk : mf.midi_tracks) {
-        for (size_t i = 0; i < mtrk.midi_events.size(); i++) {
-            if (typeid(*mtrk[i]) == typeid(tempo_meta_midi_event)) {
-                uint32_t tick = mtrk[i]->ticks;
-                tempo_track.midi_events.emplace_back(std::move(mtrk[i]));
-                mtrk[i] = std::make_unique<dummy_midi_event>(tick);
-            } else if (typeid(*mtrk[i]) == typeid(timesignature_meta_midi_event)) {
-                uint32_t tick = mtrk[i]->ticks;
-                timesignature_track.midi_events.emplace_back(std::move(mtrk[i]));
-                mtrk[i] = std::make_unique<dummy_midi_event>(tick);
+        for (size_t ievt = 0; ievt < mtrk.midi_events.size(); ievt++) {
+            if (typeid(*mtrk[ievt]) == typeid(tempo_meta_midi_event)) {
+                uint32_t tick = mtrk[ievt]->ticks;
+                tempo_track.midi_events.emplace_back(std::move(mtrk[ievt]));
+                mtrk[ievt] = std::make_unique<dummy_midi_event>(tick);
+            } else if (typeid(*mtrk[ievt]) == typeid(timesignature_meta_midi_event)) {
+                uint32_t tick = mtrk[ievt]->ticks;
+                timesignature_track.midi_events.emplace_back(std::move(mtrk[ievt]));
+                mtrk[ievt] = std::make_unique<dummy_midi_event>(tick);
             }
         }
     }
@@ -755,12 +755,12 @@ static void midi_remove_empty_tracks() {
         return;
 
     // remove surplus time signature events
-    for (size_t i = 0; i < timesignature_track.midi_events.size(); i++) {
+    for (size_t ievt = 0; ievt < timesignature_track.midi_events.size(); ievt++) {
         size_t dummy;
         if (find_next_event_at_tick_index<timesignature_meta_midi_event>(
-                    timesignature_track, i, dummy)) {
+                    timesignature_track, ievt, dummy)) {
             timesignature_track.midi_events.erase(timesignature_track.midi_events.begin() +
-                    static_cast<long>(i--));
+                    static_cast<long>(ievt--));
         }
     }
 
@@ -839,8 +839,8 @@ static void midi_apply_filters() {
         uint8_t volume = 100;
         uint8_t expression = 127;
 
-        for (size_t i = 0; i < mtrk.midi_events.size(); i++) {
-            midi_event& ev = *mtrk[i];
+        for (size_t ievt = 0; ievt < mtrk.midi_events.size(); ievt++) {
+            midi_event& ev = *mtrk[ievt];
             if (typeid(ev) == typeid(controller_message_midi_event)) {
                 controller_message_midi_event& ctrl_ev = 
                     static_cast<controller_message_midi_event&>(ev);
@@ -859,8 +859,8 @@ static void midi_apply_filters() {
             } else if (typeid(ev) == typeid(noteon_message_midi_event)) {
                 size_t target_event = 0;
                 if (find_next_event_at_tick_index<noteoff_message_midi_event>(
-                            mtrk, i, target_event)) {
-                    std::swap(mtrk[i], mtrk[target_event]);
+                            mtrk, ievt, target_event)) {
+                    std::swap(mtrk[ievt], mtrk[target_event]);
                 } else {
                     noteon_message_midi_event& note_ev =
                         static_cast<noteon_message_midi_event&>(ev);
@@ -988,47 +988,37 @@ static void midi_remove_redundant_events() {
 
     for (midi_track& mtrk : mf.midi_tracks) {
         uint8_t tempo = 120 / 2;
-        bool tempo_init = false;
         uint8_t voice = 0;
         bool voice_init = false;
         uint8_t vol = 100;
-        bool vol_init = false;
         uint8_t pan = 0x40;
-        bool pan_init = false;
         int8_t bend = 0;
-        bool bend_init = false;
         uint8_t bendr = 2;
-        bool bendr_init = false;
         uint8_t mod = 0;
-        bool mod_init = false;
         uint8_t modt = 0;
-        bool modt_init = false;
         uint8_t tune = 0x40;
-        bool tune_init = false;
 
         size_t dummy;
 
-        for (size_t i = 0; i < mtrk.midi_events.size(); i++) {
-            midi_event& ev = *mtrk.midi_events[i];
+        for (size_t ievt = 0; ievt < mtrk.midi_events.size(); ievt++) {
+            midi_event& ev = *mtrk.midi_events[ievt];
             if (typeid(ev) == typeid(tempo_meta_midi_event)) {
                 tempo_meta_midi_event& tev = static_cast<tempo_meta_midi_event&>(ev);
                 double halved_bpm = std::round(tev.get_bpm() * 0.5);
                 halved_bpm = clamp(halved_bpm, 0.0, 255.0);
                 uint8_t utempo = static_cast<uint8_t>(halved_bpm);
-                if ((tempo_init && tempo == utempo) ||
+                if ((tempo == utempo) ||
                         find_next_event_at_tick_index<tempo_meta_midi_event>(
-                            mtrk, i, dummy)) {
-                    mtrk[i] = std::make_unique<dummy_midi_event>(mtrk[i]->ticks);
-                } else {
-                    tempo_init = true;
+                            mtrk, ievt, dummy)) {
+                    mtrk[ievt] = std::make_unique<dummy_midi_event>(mtrk[ievt]->ticks);
                 }
                 tempo = utempo;
             } else if (typeid(ev) == typeid(program_message_midi_event)) {
                 program_message_midi_event& pev = static_cast<program_message_midi_event&>(ev);
                 if ((voice_init && pev.get_program() == voice) ||
                         find_next_event_at_tick_index<program_message_midi_event>(
-                            mtrk, i, dummy)) {
-                    mtrk[i] = std::make_unique<dummy_midi_event>(mtrk[i]->ticks);
+                            mtrk, ievt, dummy)) {
+                    mtrk[ievt] = std::make_unique<dummy_midi_event>(mtrk[ievt]->ticks);
                 } else {
                     voice_init = true;
                 }
@@ -1039,12 +1029,10 @@ static void midi_remove_redundant_events() {
                 dbend = std::round(dbend);
                 dbend = clamp(dbend, -64.0, +63.0);
                 int8_t ubend = static_cast<int8_t>(dbend);
-                if ((bend_init && bend == ubend) ||
+                if ((bend == ubend) ||
                         find_next_event_at_tick_index<pitchbend_message_midi_event>(
-                            mtrk, i, dummy)) {
-                    mtrk[i] = std::make_unique<dummy_midi_event>(mtrk[i]->ticks);
-                } else {
-                    bend_init = true;
+                            mtrk, ievt, dummy)) {
+                    mtrk[ievt] = std::make_unique<dummy_midi_event>(mtrk[ievt]->ticks);
                 }
                 bend = ubend;
             } else if (typeid(ev) == typeid(controller_message_midi_event)) {
@@ -1052,69 +1040,57 @@ static void midi_remove_redundant_events() {
                 uint8_t ctrl = cev.get_controller();
                 switch (ctrl) {
                 case MIDI_CC_MSB_VOLUME:
-                    if ((vol_init && vol == cev.get_value()) ||
+                    if ((vol == cev.get_value()) ||
                             find_next_event_at_tick_index<controller_message_midi_event,
-                            MIDI_CC_MSB_VOLUME>(mtrk, i, dummy)) {
-                        mtrk[i] = std::make_unique<dummy_midi_event>(mtrk[i]->ticks);
-                    } else {
-                        vol_init = true;
+                            MIDI_CC_MSB_VOLUME>(mtrk, ievt, dummy)) {
+                        mtrk[ievt] = std::make_unique<dummy_midi_event>(mtrk[ievt]->ticks);
                     }
                     vol = cev.get_value();
                     break;
                 case MIDI_CC_MSB_PAN:
-                    if ((pan_init && pan == cev.get_value()) ||
+                    if ((pan == cev.get_value()) ||
                             find_next_event_at_tick_index<controller_message_midi_event,
-                            MIDI_CC_MSB_PAN>(mtrk, i, dummy)) {
-                        mtrk[i] = std::make_unique<dummy_midi_event>(mtrk[i]->ticks);
-                    } else {
-                        pan_init = true;
+                            MIDI_CC_MSB_PAN>(mtrk, ievt, dummy)) {
+                        mtrk[ievt] = std::make_unique<dummy_midi_event>(mtrk[ievt]->ticks);
                     }
                     pan = cev.get_value();
                     break;
                 case MIDI_CC_EX_BENDR:
-                    if ((bendr_init && bendr == cev.get_value()) ||
+                    if ((bendr == cev.get_value()) ||
                             find_next_event_at_tick_index<controller_message_midi_event,
-                            MIDI_CC_EX_BENDR>(mtrk, i, dummy)) {
-                        mtrk[i] = std::make_unique<dummy_midi_event>(mtrk[i]->ticks);
-                    } else {
-                        bendr_init = true;
+                            MIDI_CC_EX_BENDR>(mtrk, ievt, dummy)) {
+                        mtrk[ievt] = std::make_unique<dummy_midi_event>(mtrk[ievt]->ticks);
                     }
                     bendr = cev.get_value();
                     break;
                 case MIDI_CC_MSB_MOD:
-                    if ((mod_init && mod == cev.get_value()) ||
+                    if ((mod == cev.get_value()) ||
                             find_next_event_at_tick_index<controller_message_midi_event,
-                            MIDI_CC_MSB_MOD>(mtrk, i, dummy)) {
-                        mtrk[i] = std::make_unique<dummy_midi_event>(mtrk[i]->ticks);
-                    } else {
-                        mod_init = true;
+                            MIDI_CC_MSB_MOD>(mtrk, ievt, dummy)) {
+                        mtrk[ievt] = std::make_unique<dummy_midi_event>(mtrk[ievt]->ticks);
                     }
                     mod = cev.get_value();
                     break;
                 case MIDI_CC_EX_MODT:
-                    if ((modt_init && modt == cev.get_value()) ||
+                    if ((modt == cev.get_value()) ||
                             find_next_event_at_tick_index<controller_message_midi_event,
-                            MIDI_CC_EX_MODT>(mtrk, i, dummy)) {
-                        mtrk[i] = std::make_unique<dummy_midi_event>(mtrk[i]->ticks);
-                    } else {
-                        mod_init = true;
+                            MIDI_CC_EX_MODT>(mtrk, ievt, dummy)) {
+                        mtrk[ievt] = std::make_unique<dummy_midi_event>(mtrk[ievt]->ticks);
                     }
                     modt = cev.get_value();
                     break;
                 case MIDI_CC_EX_TUNE:
-                    if ((tune_init && tune == cev.get_value()) ||
+                    if ((tune == cev.get_value()) ||
                             find_next_event_at_tick_index<controller_message_midi_event,
-                            MIDI_CC_EX_TUNE>(mtrk, i, dummy)) {
-                        mtrk[i] = std::make_unique<dummy_midi_event>(mtrk[i]->ticks);
-                    } else {
-                        tune_init = true;
+                            MIDI_CC_EX_TUNE>(mtrk, ievt, dummy)) {
+                        mtrk[ievt] = std::make_unique<dummy_midi_event>(mtrk[ievt]->ticks);
                     }
                     tune = cev.get_value();
                     break;
                 case MIDI_CC_EX_LOOP:
                     if (cev.get_value() != EX_LOOP_START &&
                             cev.get_value() != EX_LOOP_END) {
-                        mtrk[i] = std::make_unique<dummy_midi_event>(mtrk[i]->ticks);
+                        mtrk[ievt] = std::make_unique<dummy_midi_event>(mtrk[ievt]->ticks);
                     }
                     break;
                 case MIDI_CC_EX_PRIO:
@@ -1122,7 +1098,7 @@ static void midi_remove_redundant_events() {
                     break;
                 default:
                     dbg("Removing MIDI event of type: %s\n", typeid(ev).name());
-                    mtrk[i] = std::make_unique<dummy_midi_event>(mtrk[i]->ticks);
+                    mtrk[ievt] = std::make_unique<dummy_midi_event>(mtrk[ievt]->ticks);
                     break;
                 } // end controller switch 
             } else if (typeid(ev) == typeid(timesignature_meta_midi_event)) {
@@ -1133,7 +1109,7 @@ static void midi_remove_redundant_events() {
                 // ignore
             } else {
                 dbg("Removing MIDI event of type: %s\n", typeid(ev).name());
-                mtrk[i] = std::make_unique<dummy_midi_event>(mtrk[i]->ticks);
+                mtrk[ievt] = std::make_unique<dummy_midi_event>(mtrk[ievt]->ticks);
             }
         } // end event loop
     } // end track for loop
@@ -1160,8 +1136,8 @@ static void midi_to_agb() {
 
     uint32_t prev_tick = 0;
 
-    for (size_t i = 0; i < mtrk.midi_events.size(); i++) {
-        uint32_t diff_ticks = mtrk[i]->ticks - prev_tick;
+    for (size_t ievt = 0; ievt < mtrk.midi_events.size(); ievt++) {
+        uint32_t diff_ticks = mtrk[ievt]->ticks - prev_tick;
 
         bar_table.back().num_ticks += diff_ticks;
 
@@ -1172,9 +1148,9 @@ static void midi_to_agb() {
                     bar_table.back().num_ticks, new_num_ticks);
         }
 
-        if (typeid(*mtrk[i]) == typeid(timesignature_meta_midi_event)) {
+        if (typeid(*mtrk[ievt]) == typeid(timesignature_meta_midi_event)) {
             const timesignature_meta_midi_event& tev =
-                static_cast<timesignature_meta_midi_event&>(*mtrk[i]);
+                static_cast<timesignature_meta_midi_event&>(*mtrk[ievt]);
             current_bar_len = tev.get_numerator() * 96 / (1 << tev.get_denominator());
             dbg("bar length is now %u ticks\n", current_bar_len);
 
@@ -1223,12 +1199,12 @@ static void midi_to_agb() {
 
         uint32_t current_bar = 0;
         uint32_t tick_counter = 0;
-        for (size_t i = 0; i < mtrk.midi_events.size(); i++) {
-            const midi_event& ev = *mtrk[i];
+        for (size_t ievt = 0; ievt < mtrk.midi_events.size(); ievt++) {
+            const midi_event& ev = *mtrk[ievt];
             // skip all dummy events EXCEPT the very last one
             // so the song does not get truncated
             if (typeid(ev) == typeid(dummy_midi_event) &&
-                    i + 1 != mtrk.midi_events.size())
+                    ievt + 1 != mtrk.midi_events.size())
                 continue;
 
             uint32_t ticks_to_event = ev.ticks -
@@ -1333,7 +1309,7 @@ static void midi_to_agb() {
                     static_cast<const noteon_message_midi_event&>(ev);
                 uint32_t note_len;
                 size_t noteoff_index;
-                if (get_note_length(mtrk, i, note_len, noteoff_index)) {
+                if (get_note_length(mtrk, ievt, note_len, noteoff_index)) {
                     // note end could be found
                     if (note_len > 96) {
                         atrk.bars.back().events.emplace_back(agb_ev::ty::TIE);
@@ -1783,15 +1759,26 @@ static void write_agb() {
                 assert(ibar + 1 == atrk.bars.size());
                 continue;
             }
-            auto result = compression_table.insert(
-                    std::pair<std::reference_wrapper<agb_bar>, bar_dest>(
-                        abar, bar_dest(itrk, ibar)));
-            if (!result.second) {
-                // if bar already is inserted, increment its reference count
-                as.tracks[result.first->second.track].bars[result.first->second.bar].is_referenced = true;
-                // mark reference origin
-                abar.does_reference = true;
+            for (size_t ievt = 0; ievt < abar.events.size(); ievt++) {
+                // if one event contains a loop end, don't make it callable
+                // otherwise other tracks might call the loop end which will
+                // make things go out of order
+                if (abar.events[ievt].type == agb_ev::ty::LOOP_END)
+                    goto outer_continue;
             }
+            {
+                auto result = compression_table.insert(
+                        std::pair<std::reference_wrapper<agb_bar>, bar_dest>(
+                            abar, bar_dest(itrk, ibar)));
+                if (!result.second) {
+                    // if bar already is inserted, trigger its reference count
+                    as.tracks[result.first->second.track].bars[result.first->second.bar].is_referenced = true;
+                    // mark reference origin
+                    abar.does_reference = true;
+                }
+            }
+outer_continue:
+            ;
         }
     }
 
@@ -1808,6 +1795,7 @@ static void write_agb() {
     }
     agb_out(fout, "        .equ    %s_key, 0\n\n", arg_sym.c_str());
     agb_out(fout, "        .section .rodata\n");
+    agb_out(fout, "        .global %s\n", arg_sym.c_str());
     agb_out(fout, "        .align  2\n\n");
 
     for (size_t itrk = 0; itrk < as.tracks.size(); itrk++) {
