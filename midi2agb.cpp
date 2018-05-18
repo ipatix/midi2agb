@@ -27,7 +27,6 @@ static void usage() {
     err("-p <pri>      | song priority 0..127 (default: 0)\n");
     err("-r <rev>      | song reverb 0..127 (default: 0)\n");
     err("-n            | apply natural volume scale\n");
-    err("-e            | exact note gate time (increases size by a few bytes)\n");
     err("-v            | output debug information\n");
     err("--modt <val>  | global modulation type 0..2\n");
     err("--modsc <val> | global modulation scale 0.0 - 16.0\n");
