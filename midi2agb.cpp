@@ -260,6 +260,7 @@ int main(int argc, char *argv[]) {
         midi_remove_empty_tracks();
         midi_apply_filters();
         midi_apply_loop_and_state_reset();
+        err("hello\n");
         midi_remove_redundant_events();
 
         midi_to_agb();
@@ -888,8 +889,8 @@ static void midi_apply_loop_and_state_reset() {
 
         bool loop_start_passed = false;
 
-        for (size_t i = 0; i < mtrk.midi_events.size(); i++) {
-            midi_event& ev = *mtrk[i];
+        for (size_t itrk = 0; itrk < mtrk.midi_events.size(); itrk++) {
+            midi_event& ev = *mtrk[itrk];
             if (typeid(ev) == typeid(tempo_meta_midi_event)) {
                 tempo_meta_midi_event& tev = static_cast<tempo_meta_midi_event&>(ev);
                 if (!loop_start_passed)
@@ -964,9 +965,10 @@ static void midi_apply_loop_and_state_reset() {
                                     ev.ticks, cev.channel(),
                                     MIDI_CC_EX_TUNE, tune));
                         mtrk.midi_events.insert(mtrk.midi_events.begin() +
-                                static_cast<long>(i),
+                                static_cast<long>(itrk),
                                 std::make_move_iterator(ptrs.begin()),
                                 std::make_move_iterator(ptrs.end()));
+                        itrk += ptrs.size();
                     }
                     break;
                 default:
