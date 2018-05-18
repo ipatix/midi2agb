@@ -1,6 +1,6 @@
 CXX = clang++
 STRIP = strip
-CXXFLAGS = -Wall -Wextra -Wconversion -std=c++14 -O2 -DNDEBUG
+CXXFLAGS = -Wall -Wextra -Wconversion -std=c++14 -Og -g
 BINARY = midi2agb
 LIBS = 
 
@@ -16,7 +16,7 @@ clean:
 
 $(BINARY): $(OBJ_FILES)
 	$(CXX) -o $@ $^ $(LIBS)
-	$(STRIP) -s $@
+	#$(STRIP) -s $@
 
 %.o: %.c
-	$(CXX) -c -o $@ $< $(CFLAGS)
+	$(CXX) -c -o $@ $< $(CFLAGS) -fsanitize=memory
