@@ -1437,16 +1437,26 @@ static void agb_out(std::ofstream& ofs, const char *msg, ...) {
 
 struct agb_state {
     agb_state()
-        : cmd_state(cmd::VOICE), note_key(0), note_vel(0), note_len(0),
-        may_repeat(false), reset_cmd(true) {}
+        : cmd_state(cmd::INVALID), note_key(0xFF), note_vel(0xFF), note_len(0),
+        may_repeat(false) {}
+
+    void reset() {
+        cmd_state = cmd::INVALID;
+        note_key = 0xFF;
+        note_vel = 0xFF;
+        note_len = 0;
+        // TODO verify
+        // reset() only get's called in places where a set to
+        // may_repeat = false might not be needed
+        may_repeat = false;
+    }
 
     enum class cmd {
         VOICE, VOL, PAN, BEND, BENDR, LFOS, LFODL, MOD, MODT, TUNE,
-        XCMD, EOT, TIE, NOTE,
+        XCMD, EOT, TIE, NOTE, INVALID
     } cmd_state;
     uint8_t note_key, note_vel, note_len;
     bool may_repeat;
-    bool reset_cmd;
 };
 
 static void write_event(std::ofstream& ofs, agb_state& state, const agb_ev& ev, size_t itrk) {
@@ -1510,82 +1520,74 @@ static void write_event(std::ofstream& ofs, agb_state& state, const agb_ev& ev, 
                 arg_sym.c_str(), ev.keysh);
         break;
     case agb_ev::ty::VOICE:
-        if (state.may_repeat && !state.reset_cmd && state.cmd_state == agb_state::cmd::VOICE) {
+        if (state.may_repeat && state.cmd_state == agb_state::cmd::VOICE) {
             agb_out(ofs, "        .byte                   %d\n", ev.voice);
         } else {
             agb_out(ofs, "        .byte           VOICE , %d\n", ev.voice);
             state.may_repeat = true;
-            state.reset_cmd = false;
             state.cmd_state = agb_state::cmd::VOICE;
         }
         break;
     case agb_ev::ty::VOL:
-        if (state.may_repeat && !state.reset_cmd && state.cmd_state == agb_state::cmd::VOL) {
+        if (state.may_repeat && state.cmd_state == agb_state::cmd::VOL) {
             agb_out(ofs, "        .byte                   %d\n", ev.vol);
         } else {
             agb_out(ofs, "        .byte           VOL   , %d\n", ev.vol);
             state.may_repeat = true;
-            state.reset_cmd = false;
             state.cmd_state = agb_state::cmd::VOL;
         }
         break;
     case agb_ev::ty::PAN:
-        if (state.may_repeat && !state.reset_cmd && state.cmd_state == agb_state::cmd::PAN) {
+        if (state.may_repeat && state.cmd_state == agb_state::cmd::PAN) {
             agb_out(ofs, "        .byte                   c_v%+d\n", ev.pan);
         } else {
             agb_out(ofs, "        .byte           PAN   , c_v%+d\n", ev.pan);
             state.may_repeat = true;
-            state.reset_cmd = false;
             state.cmd_state = agb_state::cmd::PAN;
         }
         break;
     case agb_ev::ty::BEND:
-        if (state.may_repeat && !state.reset_cmd && state.cmd_state == agb_state::cmd::BEND) {
+        if (state.may_repeat && state.cmd_state == agb_state::cmd::BEND) {
             agb_out(ofs, "        .byte                   c_v%+d\n", ev.bend);
         } else {
             agb_out(ofs, "        .byte           BEND  , c_v%+d\n", ev.bend);
             state.may_repeat = true;
-            state.reset_cmd = false;
             state.cmd_state = agb_state::cmd::BEND;
         }
         break;
     case agb_ev::ty::BENDR:
-        if (state.may_repeat && !state.reset_cmd && state.cmd_state == agb_state::cmd::BENDR) {
+        if (state.may_repeat && state.cmd_state == agb_state::cmd::BENDR) {
             agb_out(ofs, "        .byte                   %d\n", ev.bendr);
         } else {
             agb_out(ofs, "        .byte           BENDR , %d\n", ev.bendr);
             state.may_repeat = true;
-            state.reset_cmd = false;
             state.cmd_state = agb_state::cmd::BENDR;
         }
         break;
     case agb_ev::ty::LFOS:
-        if (state.may_repeat && !state.reset_cmd && state.cmd_state == agb_state::cmd::LFOS) {
+        if (state.may_repeat && state.cmd_state == agb_state::cmd::LFOS) {
             agb_out(ofs, "        .byte                   %d\n", ev.lfos);
         } else {
             agb_out(ofs, "        .byte           LFOS  , %d\n", ev.lfos);
             state.may_repeat = true;
-            state.reset_cmd = false;
             state.cmd_state = agb_state::cmd::LFOS;
         }
         break;
     case agb_ev::ty::LFODL:
-        if (state.may_repeat && !state.reset_cmd && state.cmd_state == agb_state::cmd::LFODL) {
+        if (state.may_repeat && state.cmd_state == agb_state::cmd::LFODL) {
             agb_out(ofs, "        .byte                   %d\n", ev.lfodl);
         } else {
             agb_out(ofs, "        .byte           LFODL , %d\n", ev.lfodl);
             state.may_repeat = true;
-            state.reset_cmd = false;
             state.cmd_state = agb_state::cmd::LFODL;
         }
         break;
     case agb_ev::ty::MOD:
-        if (state.may_repeat && !state.reset_cmd && state.cmd_state == agb_state::cmd::MOD) {
+        if (state.may_repeat && state.cmd_state == agb_state::cmd::MOD) {
             agb_out(ofs, "        .byte                   %d\n", ev.mod);
         } else {
             agb_out(ofs, "        .byte           MOD   , %d\n", ev.mod);
             state.may_repeat = true;
-            state.reset_cmd = false;
             state.cmd_state = agb_state::cmd::MOD;
         }
         break;
@@ -1598,46 +1600,43 @@ static void write_event(std::ofstream& ofs, agb_state& state, const agb_ev& ev, 
                 modt = "mod_pan";
             else
                 modt = "mod_vib";
-            if (state.may_repeat && !state.reset_cmd && state.cmd_state == agb_state::cmd::MODT) {
+            if (state.may_repeat && state.cmd_state == agb_state::cmd::MODT) {
                 agb_out(ofs, "        .byte                   %s\n", modt);
             } else {
                 agb_out(ofs, "        .byte           MODT  , %s\n", modt);
                 state.may_repeat = true;
-                state.reset_cmd = false;
                 state.cmd_state = agb_state::cmd::MODT;
             }
         }
         break;
     case agb_ev::ty::TUNE:
-        if (state.may_repeat && !state.reset_cmd && state.cmd_state == agb_state::cmd::TUNE) {
+        if (state.may_repeat && state.cmd_state == agb_state::cmd::TUNE) {
             agb_out(ofs, "        .byte                   c_v%+d\n", ev.tune);
         } else {
             agb_out(ofs, "        .byte           TUNE  , c_v%+d\n", ev.tune);
             state.may_repeat = true;
-            state.reset_cmd = false;
             state.cmd_state = agb_state::cmd::TUNE;
         }
         break;
     case agb_ev::ty::XCMD:
-        if (state.may_repeat && !state.reset_cmd && state.cmd_state == agb_state::cmd::XCMD) {
+        if (state.may_repeat && state.cmd_state == agb_state::cmd::XCMD) {
             agb_out(ofs, "        .byte                   0x%02X  , %d\n",
                     ev.xcmd.type, ev.xcmd.par);
         } else {
             agb_out(ofs, "        .byte           XCMD  , 0x%02X  , %d\n",
                     ev.xcmd.type, ev.xcmd.par);
             state.may_repeat = true;
-            state.reset_cmd = false;
             state.cmd_state = agb_state::cmd::XCMD;
         }
         break;
     case agb_ev::ty::EOT:
         assert(ev.eot.key < 128);
-        if (state.may_repeat && !state.reset_cmd && state.cmd_state == agb_state::cmd::EOT) {
+        if (state.may_repeat && state.cmd_state == agb_state::cmd::EOT) {
             agb_out(ofs, "        .byte                   %s\n",
                     note_names[ev.eot.key]);
             state.note_key = ev.eot.key;
         } else {
-            if (!state.reset_cmd && state.note_key == ev.eot.key) {
+            if (state.note_key == ev.eot.key) {
                 agb_out(ofs, "        .byte           EOT\n");
             } else {
                 agb_out(ofs, "        .byte           EOT   , %s\n",
@@ -1645,14 +1644,13 @@ static void write_event(std::ofstream& ofs, agb_state& state, const agb_ev& ev, 
                 state.note_key = ev.eot.key;
             }
             state.may_repeat = true;
-            state.reset_cmd = false;
             state.cmd_state = agb_state::cmd::EOT;
         }
         break;
     case agb_ev::ty::TIE:
         assert(ev.tie.key < 128);
         assert(ev.tie.vel < 128);
-        if (state.may_repeat && !state.reset_cmd && state.cmd_state == agb_state::cmd::TIE) {
+        if (state.may_repeat && state.cmd_state == agb_state::cmd::TIE) {
             if (state.note_vel == ev.tie.vel) {
                 agb_out(ofs, "        .byte                   %s\n",
                         note_names[ev.tie.key]);
@@ -1665,11 +1663,11 @@ static void write_event(std::ofstream& ofs, agb_state& state, const agb_ev& ev, 
                 state.note_vel = ev.tie.vel;
             }
         } else {
-            if (!state.reset_cmd && state.note_key == ev.tie.key &&
+            if (state.note_key == ev.tie.key &&
                     state.note_vel == ev.tie.vel) {
                 agb_out(ofs, "        .byte           TIE\n");
                 state.may_repeat = false;
-            } else if (!state.reset_cmd && state.note_vel == ev.tie.vel) {
+            } else if (state.note_vel == ev.tie.vel) {
                 agb_out(ofs, "        .byte           TIE   , %s\n",
                         note_names[ev.tie.key]);
                 state.note_key = ev.tie.key;
@@ -1681,7 +1679,6 @@ static void write_event(std::ofstream& ofs, agb_state& state, const agb_ev& ev, 
                 state.note_vel = ev.tie.vel;
                 state.may_repeat = true;
             }
-            state.reset_cmd = false;
             state.cmd_state = agb_state::cmd::TIE;
         }
         break;
@@ -1691,7 +1688,7 @@ static void write_event(std::ofstream& ofs, agb_state& state, const agb_ev& ev, 
         assert(ev.note.len - len_table[ev.note.len] <= 3);
         assert(ev.note.key < 128);
         assert(ev.note.vel < 128);
-        if (state.may_repeat && !state.reset_cmd && state.cmd_state == agb_state::cmd::NOTE) {
+        if (state.may_repeat && state.cmd_state == agb_state::cmd::NOTE) {
             if (state.note_vel == ev.note.vel && state.note_len == ev.note.len) {
                 agb_out(ofs, "        .byte                   %s\n",
                         note_names[ev.note.key]);
@@ -1743,15 +1740,13 @@ static void write_event(std::ofstream& ofs, agb_state& state, const agb_ev& ev, 
             }
         } else {
             int gate_time = ev.note.len - len_table[ev.note.len];
-            if (!state.reset_cmd && gate_time == 0 &&
-                    state.note_key == ev.note.key &&
+            if (gate_time == 0 && state.note_key == ev.note.key &&
                     state.note_vel == ev.note.vel) {
                 agb_out(ofs, "        .byte           N%02d\n",
                         ev.note.len);
                 state.note_len = ev.note.len;
                 state.may_repeat = false;
-            } else if (!state.reset_cmd && gate_time == 0 &&
-                    state.note_vel == ev.note.vel) {
+            } else if (gate_time == 0 && state.note_vel == ev.note.vel) {
                 agb_out(ofs, "        .byte           N%02d   , %s\n",
                         ev.note.len, note_names[ev.note.key]);
                 state.note_len = ev.note.len;
@@ -1763,7 +1758,6 @@ static void write_event(std::ofstream& ofs, agb_state& state, const agb_ev& ev, 
                 state.note_len = ev.note.len;
                 state.note_key = ev.note.key;
                 state.note_vel = ev.note.vel;
-                state.reset_cmd = false;
                 state.may_repeat = false;
             } else {
                 int gi = ev.note.len - len_table[ev.note.len] - 1;
@@ -1773,7 +1767,6 @@ static void write_event(std::ofstream& ofs, agb_state& state, const agb_ev& ev, 
                 state.note_len = len_table[ev.note.len];
                 state.note_key = ev.note.key;
                 state.note_vel = ev.note.vel;
-                state.reset_cmd = false;
                 state.may_repeat = true;
             }
             state.cmd_state = agb_state::cmd::NOTE;
@@ -1875,8 +1868,12 @@ outer_continue:
             assert(!abar.is_referenced || !abar.does_reference);
             agb_out(fout, "@ %03zu   ----------------------------------------\n", ibar);
             if (abar.is_referenced) {
+                // TODO This sometimes adds unneccessary labels and PENDs below
+                // In some cases the compressor will decide to not call this section
+                // in the end due to smaller space usage without a call. Probably a bit
+                // more complicated to fix.
                 agb_out(fout, "%s_%zu_%zu:\n", arg_sym.c_str(), itrk, ibar);
-                state.reset_cmd = true;
+                state.reset();
             }
 
             if (!abar.does_reference) {
@@ -1915,7 +1912,7 @@ outer_continue:
                         agb_out(fout, "        .byte   PATT\n");
                         agb_out(fout, "         .word  %s_%zu_%zu\n", arg_sym.c_str(),
                                 track_refed, bar_refed);
-                        state.reset_cmd = true;
+                        state.reset();
                     }
                 } else {
                     if (rept_count * abar.size() < 6) {
@@ -1928,7 +1925,7 @@ outer_continue:
                                 track_refed, bar_refed);
                         ibar += rept_count - 1;
                     }
-                    state.reset_cmd = true;
+                    state.reset();
                 }
             }
 
