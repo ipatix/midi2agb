@@ -133,6 +133,8 @@ static void midi_remove_redundant_events();
 
 static void midi_to_agb();
 
+static void agb_optimize();
+
 static void write_agb();
 
 int main(int argc, char *argv[]) {
@@ -263,6 +265,8 @@ int main(int argc, char *argv[]) {
         midi_remove_redundant_events();
 
         midi_to_agb();
+
+        agb_optimize();
 
         write_agb();
     } catch (const cppmidi::xcept& ex) {
@@ -792,15 +796,6 @@ static void midi_remove_empty_tracks() {
  * applies the scale beforehand. Also, expression and volume are combined
  * to volume only.
  *
- * Note Order:
- * Note's should always be turned off before turning the next ones
- * on. On PC MIDI software that usually doesn't matter but on GBA
- * the engine might allocate a new channel (which might fail) before
- * deallocating one on the same time spot. The GBA engine is stupid
- * and will process the events in that exact order and so we have to
- * do some prevention here. Otherwise unnecessary notes might get
- * dropped.
- *
  * Modulation Scale:
  * The scale of modulation intensity isn't really standardized.
  * Therefore an option to globally scale the modulation is offerred.
@@ -855,16 +850,11 @@ static void midi_apply_filters() {
                     scaled_mod = std::roundf(scaled_mod);
                     ctrl_ev.set_value(static_cast<uint8_t>(clamp(scaled_mod, 0.0f, 127.0f)));
                 }
-            } else if (typeid(ev) == typeid(noteon_message_midi_event)) {
-                size_t target_event = 0;
-                if (find_next_event_at_tick_index<noteoff_message_midi_event>(
-                            mtrk, ievt, target_event)) {
-                    std::swap(mtrk[ievt], mtrk[target_event]);
-                } else {
-                    noteon_message_midi_event& note_ev =
-                        static_cast<noteon_message_midi_event&>(ev);
-                    note_ev.set_velocity(vel_scale(note_ev.get_velocity()));
-                }
+            }
+            else if (typeid(ev) == typeid(noteon_message_midi_event)) {
+                noteon_message_midi_event& note_ev =
+                    static_cast<noteon_message_midi_event&>(ev);
+                note_ev.set_velocity(vel_scale(note_ev.get_velocity()));
             }
         }
     }
@@ -1319,10 +1309,10 @@ static void midi_to_agb() {
                             noteon_ev.get_key();
                         atrk.bars.back().events.back().tie.vel =
                             noteon_ev.get_velocity();
-                    } else if (note_len > 0) {
+                    } else {
                         atrk.bars.back().events.emplace_back(agb_ev::ty::NOTE);
                         atrk.bars.back().events.back().note.len =
-                            static_cast<uint8_t>(note_len);
+                            static_cast<uint8_t>(std::max(note_len, 1u));
                         atrk.bars.back().events.back().note.key =
                             noteon_ev.get_key();
                         atrk.bars.back().events.back().note.vel =
@@ -1338,6 +1328,46 @@ static void midi_to_agb() {
                 atrk.bars.back().events.emplace_back(agb_ev::ty::EOT);
                 atrk.bars.back().events.back().eot.key =
                     noteoff_ev.get_key();
+            }
+        }
+    }
+}
+
+/*
+ * Note Order:
+ * Note's should always be turned off before turning the next ones
+ * on. On PC MIDI software that usually doesn't matter but on GBA
+ * the engine might allocate a new channel (which might fail) before
+ * deallocating one on the same time spot. The GBA engine is stupid
+ * and will process the events in that exact order and so we have to
+ * do some prevention here. Otherwise unnecessary notes might get
+ * dropped.
+ */
+static void agb_optimize() {
+    for (agb_track& atrk : as.tracks) {
+        for (agb_bar& abar : atrk.bars) {
+            size_t first_ev_at_tick = 0;
+            for (size_t ievt = 0; ievt < abar.events.size(); ievt++) {
+                if (abar.events[ievt].type == agb_ev::ty::WAIT) {
+                    first_ev_at_tick = ievt + 1;
+                } else if (abar.events[ievt].type == agb_ev::ty::EOT) {
+                    size_t events_to_shift = ievt - first_ev_at_tick;
+                    if (events_to_shift == 0) {
+                        first_ev_at_tick = ievt + 1;
+                        continue;
+                    }
+                    agb_ev eot_event(std::move(abar.events[ievt]));
+                    std::vector<agb_ev> events_removed(
+                            std::make_move_iterator(abar.events.begin() +
+                                first_ev_at_tick),
+                            std::make_move_iterator(abar.events.begin() +
+                                static_cast<long>(first_ev_at_tick + events_to_shift)));
+                    abar.events[first_ev_at_tick] = std::move(eot_event);
+                    std::move(events_removed.begin(), events_removed.end(),
+                            abar.events.begin() + static_cast<long>(first_ev_at_tick + 1));
+
+                    first_ev_at_tick += 1;
+                }
             }
         }
     }
