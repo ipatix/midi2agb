@@ -1208,8 +1208,15 @@ static void midi_to_agb() {
             // skip all dummy events EXCEPT the very last one
             // so the song does not get truncated
             if (typeid(ev) == typeid(dummy_midi_event) &&
-                    ievt + 1 != mtrk.midi_events.size())
+                    ievt + 1 != mtrk.midi_events.size()) {
                 continue;
+            }
+            if (typeid(ev) == typeid(noteoff_message_midi_event)) {
+                const noteoff_message_midi_event& noteoff_ev =
+                    static_cast<const noteoff_message_midi_event&>(ev);
+                if (noteoff_ev.get_velocity() == MIDI_NOTE_PARSE_SHORT)
+                    continue;
+            }
 
             uint32_t ticks_to_event = ev.ticks -
                 (bar_table[current_bar].start_tick + tick_counter);
