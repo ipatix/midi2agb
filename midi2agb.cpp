@@ -1814,6 +1814,8 @@ static void write_agb() {
                 assert(ibar + 1 == atrk.bars.size());
                 continue;
             }
+            if (abar.size() <= 5)
+                continue;
             for (size_t ievt = 0; ievt < abar.events.size(); ievt++) {
                 // if one event contains a loop end, don't make it callable
                 // otherwise other tracks might call the loop end which will
@@ -1893,47 +1895,13 @@ outer_continue:
                 // if this bar references another it must be found
                 assert(result != compression_table.end());
 
-                size_t rept_count = 1;
-                size_t next_bar_index = ibar;
-                while (1) {
-                    next_bar_index += 1;
-                    if (next_bar_index >= atrk.bars.size())
-                        break;
-                    if (rept_count == 255)
-                        break;
-                    if (atrk.bars[next_bar_index] != abar)
-                        break;
-                    assert(atrk.bars[next_bar_index].does_reference);
-                    rept_count += 1;
-                }
-
                 size_t track_refed = result->second.track;
                 size_t bar_refed = result->second.bar;
 
-                if (rept_count <= 1) {
-                    if (abar.size() < 5) {
-                        for (size_t ievt = 0; ievt < abar.events.size(); ievt++) {
-                            write_event(fout, state, abar.events[ievt], itrk);
-                        }
-                    } else {
-                        agb_out(fout, "        .byte   PATT\n");
-                        agb_out(fout, "         .word  %s_%zu_%zu\n", arg_sym.c_str(),
-                                track_refed, bar_refed);
-                        state.reset();
-                    }
-                } else {
-                    if (rept_count * abar.size() < 6) {
-                        for (size_t ievt = 0; ievt < abar.events.size(); ievt++) {
-                            write_event(fout, state, abar.events[ievt], itrk);
-                        }
-                    } else {
-                        agb_out(fout, "        .byte   REPT  , %zu\n", rept_count);
-                        agb_out(fout, "         .word  %s_%zu_%zu\n", arg_sym.c_str(),
-                                track_refed, bar_refed);
-                        ibar += rept_count - 1;
-                    }
-                    state.reset();
-                }
+                agb_out(fout, "        .byte   PATT\n");
+                agb_out(fout, "         .word  %s_%zu_%zu\n", arg_sym.c_str(),
+                        track_refed, bar_refed);
+                state.reset();
             }
 
             if (abar.is_referenced)
