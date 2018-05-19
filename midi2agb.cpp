@@ -1164,11 +1164,6 @@ static void midi_to_agb() {
     // last bar is always fully extended incase of missing events.
     bar_table.back().num_ticks = current_bar_len;
 
-    for (unsigned int i = 0; i < bar_table.size(); i++) {
-        dbg("bar[%u].start_tick = %u\n", i, bar_table[i].start_tick);
-        dbg("bar[%u].num_ticks = %u\n", i, bar_table[i].num_ticks);
-    }
-
     // convert to agb events
     assert(as.tracks.size() == 0);
 
@@ -1771,6 +1766,8 @@ static void write_agb() {
                 // otherwise other tracks might call the loop end which will
                 // make things go out of order
                 if (abar.events[ievt].type == agb_ev::ty::LOOP_END)
+                    goto outer_continue;
+                if (abar.events[ievt].type == agb_ev::ty::LOOP_START)
                     goto outer_continue;
             }
             {
