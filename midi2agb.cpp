@@ -520,6 +520,10 @@ static bool find_next_event_at_tick_index(const cppmidi::midi_track& mtrk,
     }
 }
 
+const uint8_t MIDI_NOTE_PARSE_INIT = 0x0;
+const uint8_t MIDI_NOTE_PARSE_SHORT = 0x1;
+const uint8_t MIDI_NOTE_PARSE_TIE = 0x2;
+
 static void midi_read_infile_arguments() {
     using namespace cppmidi;
     /*
@@ -543,7 +547,7 @@ static void midi_read_infile_arguments() {
     // parse meta events
     for (midi_track& mtrk : mf.midi_tracks) {
         for (size_t ievt = 0; ievt < mtrk.midi_events.size(); ievt++) {
-            const midi_event& ev = *mtrk[ievt];
+            midi_event& ev = *mtrk[ievt];
             std::string ev_text;
             if (typeid(ev) == typeid(marker_meta_midi_event)) {
                 // marker
@@ -574,6 +578,13 @@ static void midi_read_infile_arguments() {
                             cev.ticks, cev.channel(),
                             MIDI_CC_EX_BENDR, cev.get_value());
                 }
+                continue;
+            } else if (typeid(ev) == typeid(noteoff_message_midi_event)) {
+                // for correct midi note parsing the velocity in the noteoff
+                // command get's used for marking, reset to intial 0
+                noteoff_message_midi_event& noteoff_ev =
+                    static_cast<noteoff_message_midi_event&>(ev);
+                noteoff_ev.set_velocity(MIDI_NOTE_PARSE_INIT);
                 continue;
             } else {
                 continue;
@@ -1176,7 +1187,8 @@ static void midi_to_agb() {
                 continue;
             const noteoff_message_midi_event& noteoff_ev =
                 static_cast<const noteoff_message_midi_event&>(*mtrk[i]);
-            if (noteoff_ev.get_key() == key) {
+            if (noteoff_ev.get_key() == key &&
+                    noteoff_ev.get_velocity() == MIDI_NOTE_PARSE_INIT) {
                 len = noteoff_ev.ticks - noteon_ev.ticks;
                 noteoff_index = i;
                 return true;
@@ -1309,6 +1321,10 @@ static void midi_to_agb() {
                             noteon_ev.get_key();
                         atrk.bars.back().events.back().tie.vel =
                             noteon_ev.get_velocity();
+
+                        noteoff_message_midi_event& noteoff_ev =
+                            static_cast<noteoff_message_midi_event&>(*mtrk[noteoff_index]);
+                        noteoff_ev.set_velocity(MIDI_NOTE_PARSE_TIE);
                     } else {
                         atrk.bars.back().events.emplace_back(agb_ev::ty::NOTE);
                         atrk.bars.back().events.back().note.len =
@@ -1317,17 +1333,24 @@ static void midi_to_agb() {
                             noteon_ev.get_key();
                         atrk.bars.back().events.back().note.vel =
                             noteon_ev.get_velocity();
-                        // delete noteoff so it don't produce a EOT
-                        mtrk[noteoff_index] =
-                            std::make_unique<dummy_midi_event>(mtrk[noteoff_index]->ticks);
+
+                        noteoff_message_midi_event& noteoff_ev =
+                            static_cast<noteoff_message_midi_event&>(*mtrk[noteoff_index]);
+                        noteoff_ev.set_velocity(MIDI_NOTE_PARSE_SHORT);
                     }
+                } else {
+                    die("ERROR: Couldn't find Note OFF for Note ON\n");
                 }
             } else if (typeid(ev) == typeid(noteoff_message_midi_event)) {
                 const noteoff_message_midi_event& noteoff_ev =
                     static_cast<const noteoff_message_midi_event&>(ev);
-                atrk.bars.back().events.emplace_back(agb_ev::ty::EOT);
-                atrk.bars.back().events.back().eot.key =
-                    noteoff_ev.get_key();
+                if (noteoff_ev.get_velocity() == MIDI_NOTE_PARSE_INIT)
+                    die("ERROR: Note OFF without initial Note ON\n");
+                if (noteoff_ev.get_velocity() == MIDI_NOTE_PARSE_TIE) {
+                    atrk.bars.back().events.emplace_back(agb_ev::ty::EOT);
+                    atrk.bars.back().events.back().eot.key =
+                        noteoff_ev.get_key();
+                }
             }
         }
     }
@@ -1614,7 +1637,7 @@ static void write_event(std::ofstream& ofs, agb_state& state, const agb_ev& ev, 
                     note_names[ev.eot.key]);
             state.note_key = ev.eot.key;
         } else {
-            if (state.note_key == ev.eot.key) {
+            if (!state.reset_cmd && state.note_key == ev.eot.key) {
                 agb_out(ofs, "        .byte           EOT\n");
             } else {
                 agb_out(ofs, "        .byte           EOT   , %s\n",
@@ -1892,6 +1915,7 @@ outer_continue:
                         agb_out(fout, "        .byte   PATT\n");
                         agb_out(fout, "         .word  %s_%zu_%zu\n", arg_sym.c_str(),
                                 track_refed, bar_refed);
+                        state.reset_cmd = true;
                     }
                 } else {
                     if (rept_count * abar.size() < 6) {
@@ -1904,6 +1928,7 @@ outer_continue:
                                 track_refed, bar_refed);
                         ibar += rept_count - 1;
                     }
+                    state.reset_cmd = true;
                 }
             }
 
