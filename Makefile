@@ -21,4 +21,4 @@ $(BINARY): $(OBJ_FILES)
 	#$(STRIP) -s $@
 
 %.o: %.c
-	$(CXX) -c -o $@ $< $(CFLAGS) -fsanitize=memory
+	$(CXX) -c -o $@ $< $(CFLAGS)
