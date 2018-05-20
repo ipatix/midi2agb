@@ -543,11 +543,13 @@ static void midi_read_infile_arguments() {
     uint32_t loop_start = 0, loop_end = 0;
 
     uint8_t lsb_rpn = 0, msb_rpn = 0;
+    uint32_t last_event = 0;
 
     // parse meta events
     for (midi_track& mtrk : mf.midi_tracks) {
         for (size_t ievt = 0; ievt < mtrk.midi_events.size(); ievt++) {
             midi_event& ev = *mtrk[ievt];
+            last_event = std::max(ev.ticks, last_event);
             std::string ev_text;
             if (typeid(ev) == typeid(marker_meta_midi_event)) {
                 // marker
@@ -721,7 +723,12 @@ static void midi_read_infile_arguments() {
                     cev, ev_tick_cmp);
             mtrk.midi_events.insert(insert_pos, std::move(cev));
         }
-        // FIXME optimize to only insert a single time
+        std::unique_ptr<midi_event> dev(new dummy_midi_event(last_event));
+        auto insert_pos = std::upper_bound(
+                mtrk.midi_events.begin(),
+                mtrk.midi_events.end(),
+                dev, ev_tick_cmp);
+        mtrk.midi_events.insert(insert_pos, std::move(dev));
     }
 }
 
@@ -885,7 +892,7 @@ static void midi_apply_loop_and_state_reset() {
         uint8_t modt = 0;
         uint8_t tune = 0x40;
         uint8_t prio = 0;
-        // FIXME add prio, memacc, and pseudo echo for completeness
+        // FIXME add memacc and pseudo echo for completeness
         // omitted for now because nobody would be using it
 
         uint32_t loop_start_tick = 0xFFFFFFFF;
@@ -994,7 +1001,11 @@ static void midi_apply_loop_and_state_reset() {
 static void midi_remove_redundant_events() {
     using namespace cppmidi;
 
+    // TODO remove var
+    int trk = -1;
+
     for (midi_track& mtrk : mf.midi_tracks) {
+        trk++;
         uint8_t tempo = 120 / 2;
         uint8_t voice = 0;
         bool voice_init = false;
@@ -1020,8 +1031,9 @@ static void midi_remove_redundant_events() {
                         find_next_event_at_tick_index<tempo_meta_midi_event>(
                             mtrk, ievt, dummy)) {
                     mtrk[ievt] = std::make_unique<dummy_midi_event>(mtrk[ievt]->ticks);
+                } else {
+                    tempo = utempo;
                 }
-                tempo = utempo;
             } else if (typeid(ev) == typeid(program_message_midi_event)) {
                 program_message_midi_event& pev = static_cast<program_message_midi_event&>(ev);
                 if ((voice_init && pev.get_program() == voice) ||
@@ -1030,8 +1042,8 @@ static void midi_remove_redundant_events() {
                     mtrk[ievt] = std::make_unique<dummy_midi_event>(mtrk[ievt]->ticks);
                 } else {
                     voice_init = true;
+                    voice = pev.get_program();
                 }
-                voice = pev.get_program();
             } else if (typeid(ev) == typeid(pitchbend_message_midi_event)) {
                 pitchbend_message_midi_event& pev = static_cast<pitchbend_message_midi_event&>(ev);
                 double dbend = pev.get_pitch() / 128.0;
@@ -1042,8 +1054,9 @@ static void midi_remove_redundant_events() {
                         find_next_event_at_tick_index<pitchbend_message_midi_event>(
                             mtrk, ievt, dummy)) {
                     mtrk[ievt] = std::make_unique<dummy_midi_event>(mtrk[ievt]->ticks);
+                } else {
+                    bend = ubend;
                 }
-                bend = ubend;
             } else if (typeid(ev) == typeid(controller_message_midi_event)) {
                 controller_message_midi_event& cev = static_cast<controller_message_midi_event&>(ev);
                 uint8_t ctrl = cev.get_controller();
@@ -1053,48 +1066,54 @@ static void midi_remove_redundant_events() {
                             find_next_event_at_tick_index<controller_message_midi_event,
                             MIDI_CC_MSB_VOLUME>(mtrk, ievt, dummy)) {
                         mtrk[ievt] = std::make_unique<dummy_midi_event>(mtrk[ievt]->ticks);
+                    } else {
+                        vol = cev.get_value();
                     }
-                    vol = cev.get_value();
                     break;
                 case MIDI_CC_MSB_PAN:
                     if ((pan == cev.get_value()) ||
                             find_next_event_at_tick_index<controller_message_midi_event,
                             MIDI_CC_MSB_PAN>(mtrk, ievt, dummy)) {
                         mtrk[ievt] = std::make_unique<dummy_midi_event>(mtrk[ievt]->ticks);
+                    } else {
+                        pan = cev.get_value();
                     }
-                    pan = cev.get_value();
                     break;
                 case MIDI_CC_EX_BENDR:
                     if ((bendr == cev.get_value()) ||
                             find_next_event_at_tick_index<controller_message_midi_event,
                             MIDI_CC_EX_BENDR>(mtrk, ievt, dummy)) {
                         mtrk[ievt] = std::make_unique<dummy_midi_event>(mtrk[ievt]->ticks);
+                    } else {
+                        bendr = cev.get_value();
                     }
-                    bendr = cev.get_value();
                     break;
                 case MIDI_CC_MSB_MOD:
                     if ((mod == cev.get_value()) ||
                             find_next_event_at_tick_index<controller_message_midi_event,
                             MIDI_CC_MSB_MOD>(mtrk, ievt, dummy)) {
                         mtrk[ievt] = std::make_unique<dummy_midi_event>(mtrk[ievt]->ticks);
+                    } else {
+                        mod = cev.get_value();
                     }
-                    mod = cev.get_value();
                     break;
                 case MIDI_CC_EX_MODT:
                     if ((modt == cev.get_value()) ||
                             find_next_event_at_tick_index<controller_message_midi_event,
                             MIDI_CC_EX_MODT>(mtrk, ievt, dummy)) {
                         mtrk[ievt] = std::make_unique<dummy_midi_event>(mtrk[ievt]->ticks);
+                    } else {
+                        modt = cev.get_value();
                     }
-                    modt = cev.get_value();
                     break;
                 case MIDI_CC_EX_TUNE:
                     if ((tune == cev.get_value()) ||
                             find_next_event_at_tick_index<controller_message_midi_event,
                             MIDI_CC_EX_TUNE>(mtrk, ievt, dummy)) {
                         mtrk[ievt] = std::make_unique<dummy_midi_event>(mtrk[ievt]->ticks);
+                    } else {
+                        tune = cev.get_value();
                     }
-                    tune = cev.get_value();
                     break;
                 case MIDI_CC_EX_LOOP:
                     if (cev.get_value() != EX_LOOP_START &&
@@ -1107,8 +1126,9 @@ static void midi_remove_redundant_events() {
                             find_next_event_at_tick_index<controller_message_midi_event,
                             MIDI_CC_EX_PRIO>(mtrk, ievt, dummy)) {
                         mtrk[ievt] = std::make_unique<dummy_midi_event>(mtrk[ievt]->ticks);
+                    } else {
+                        prio = cev.get_value();
                     }
-                    prio = cev.get_value();
                     break;
                 default:
                     dbg("Removing MIDI event of type: %s\n", typeid(ev).name());
@@ -1152,6 +1172,7 @@ static void midi_to_agb() {
 
     for (size_t ievt = 0; ievt < mtrk.midi_events.size(); ievt++) {
         uint32_t diff_ticks = mtrk[ievt]->ticks - prev_tick;
+        prev_tick = mtrk[ievt]->ticks;
 
         bar_table.back().num_ticks += diff_ticks;
 
@@ -1525,6 +1546,7 @@ static void write_event(std::ofstream& ofs, agb_state& state, const agb_ev& ev, 
         break;
     case agb_ev::ty::LOOP_START:
         agb_out(ofs, "%s_%zu_LOOP:\n", arg_sym.c_str(), itrk);
+        state.reset();
         break;
     case agb_ev::ty::LOOP_END:
         agb_out(ofs, "        .byte   GOTO\n         .word  %s_%zu_LOOP\n",
