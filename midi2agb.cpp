@@ -884,60 +884,65 @@ static void midi_apply_loop_and_state_reset() {
         uint8_t mod = 0;
         uint8_t modt = 0;
         uint8_t tune = 0x40;
+        uint8_t prio = 0;
         // FIXME add prio, memacc, and pseudo echo for completeness
         // omitted for now because nobody would be using it
 
-        bool loop_start_passed = false;
+        uint32_t loop_start_tick = 0xFFFFFFFF;
 
         for (size_t itrk = 0; itrk < mtrk.midi_events.size(); itrk++) {
             midi_event& ev = *mtrk[itrk];
             if (typeid(ev) == typeid(tempo_meta_midi_event)) {
                 tempo_meta_midi_event& tev = static_cast<tempo_meta_midi_event&>(ev);
-                if (!loop_start_passed)
+                if (ev.ticks <= loop_start_tick)
                     tempo = tev.get_us_per_beat();
             } else if (typeid(ev) == typeid(program_message_midi_event)) {
                 program_message_midi_event& pev = static_cast<program_message_midi_event&>(ev);
-                if (!loop_start_passed)
+                if (ev.ticks <= loop_start_tick)
                     voice = pev.get_program();
             } else if (typeid(ev) == typeid(pitchbend_message_midi_event)) {
                 pitchbend_message_midi_event& pev = static_cast<pitchbend_message_midi_event&>(ev);
-                if (!loop_start_passed)
+                if (ev.ticks <= loop_start_tick)
                     bend = pev.get_pitch();
             } else if (typeid(ev) == typeid(controller_message_midi_event)) {
                 controller_message_midi_event& cev = static_cast<controller_message_midi_event&>(ev);
                 uint8_t ctrl = cev.get_controller();
                 switch (ctrl) {
                 case MIDI_CC_MSB_VOLUME:
-                    if (!loop_start_passed)
+                    if (ev.ticks <= loop_start_tick)
                         vol = cev.get_value();
                     break;
                 case MIDI_CC_MSB_PAN:
-                    if (!loop_start_passed)
+                    if (ev.ticks <= loop_start_tick)
                         pan = cev.get_value();
                     break;
                 case MIDI_CC_EX_BENDR:
-                    if (!loop_start_passed)
+                    if (ev.ticks <= loop_start_tick)
                         bendr = cev.get_value();
                     break;
                 case MIDI_CC_MSB_MOD:
-                    if (!loop_start_passed)
+                    if (ev.ticks <= loop_start_tick)
                         mod = cev.get_value();
                     break;
                 case MIDI_CC_EX_MODT:
-                    if (!loop_start_passed)
+                    if (ev.ticks <= loop_start_tick)
                         modt = cev.get_value();
                     break;
                 case MIDI_CC_EX_TUNE:
-                    if (!loop_start_passed)
+                    if (ev.ticks <= loop_start_tick)
                         tune = cev.get_value();
+                    break;
+                case MIDI_CC_EX_PRIO:
+                    if (ev.ticks <= loop_start_tick)
+                        prio = cev.get_value();
                     break;
                 case MIDI_CC_EX_LOOP:
                     if (cev.get_value() == EX_LOOP_START) {
                         // loop start
-                        loop_start_passed = true;
-                    } else if (cev.get_value() == EX_LOOP_END && loop_start_passed) {
-                        // loop end
-                        // insert events for start state
+                        loop_start_tick = ev.ticks;
+                    } else if (cev.get_value() == EX_LOOP_END &&
+                            ev.ticks > loop_start_tick) {
+                        // loop end insert events for start state
                         std::vector<std::unique_ptr<midi_event>> ptrs;
                         ptrs.emplace_back(new tempo_meta_midi_event(
                                     ev.ticks, tempo));
@@ -964,6 +969,9 @@ static void midi_apply_loop_and_state_reset() {
                         ptrs.emplace_back(new controller_message_midi_event(
                                     ev.ticks, cev.channel(),
                                     MIDI_CC_EX_TUNE, tune));
+                        ptrs.emplace_back(new controller_message_midi_event(
+                                    ev.ticks, cev.channel(),
+                                    MIDI_CC_EX_PRIO, prio));
                         mtrk.midi_events.insert(mtrk.midi_events.begin() +
                                 static_cast<long>(itrk),
                                 std::make_move_iterator(ptrs.begin()),
@@ -997,6 +1005,7 @@ static void midi_remove_redundant_events() {
         uint8_t mod = 0;
         uint8_t modt = 0;
         uint8_t tune = 0x40;
+        uint8_t prio = 0;
 
         size_t dummy;
 
@@ -1094,7 +1103,12 @@ static void midi_remove_redundant_events() {
                     }
                     break;
                 case MIDI_CC_EX_PRIO:
-                    // ignore
+                    if ((prio == cev.get_value()) ||
+                            find_next_event_at_tick_index<controller_message_midi_event,
+                            MIDI_CC_EX_PRIO>(mtrk, ievt, dummy)) {
+                        mtrk[ievt] = std::make_unique<dummy_midi_event>(mtrk[ievt]->ticks);
+                    }
+                    prio = cev.get_value();
                     break;
                 default:
                     dbg("Removing MIDI event of type: %s\n", typeid(ev).name());
