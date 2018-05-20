@@ -19,6 +19,8 @@ static void die(const char *msg, ...);
 static void err(const char *msg, ...);
 
 static void usage() {
+    err("midi2agb, version %s\n", GIT_VERSION);
+    err("\n");
     err("Usage:\n$ midi2agb <input.mid> [<output.mid>] [options]\n\n");
     err("Options:\n");
     err("-s <sym>      | symbol name for song header (default: file name)\n");

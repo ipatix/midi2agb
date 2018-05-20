@@ -1,6 +1,8 @@
+GIT_VERSION := $(shell git describe --abbrev=7 --dirty --always --tags)
+
 CXX = g++
 STRIP = strip
-CXXFLAGS = -Wall -Wextra -Wconversion -std=c++14 -Og -g
+CXXFLAGS = -Wall -Wextra -Wconversion -std=c++14 -Og -g -DGIT_VERSION=\"$(GIT_VERSION)\"
 BINARY = midi2agb
 LIBS = 
 
