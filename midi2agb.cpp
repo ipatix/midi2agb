@@ -1008,7 +1008,7 @@ static void midi_remove_redundant_events() {
 
     for (midi_track& mtrk : mf.midi_tracks) {
         trk++;
-        uint8_t tempo = 120 / 2;
+        uint8_t tempo = 150 / 2;
         uint8_t voice = 0;
         bool voice_init = false;
         uint8_t vol = 100;
