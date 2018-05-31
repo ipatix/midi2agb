@@ -547,8 +547,11 @@ static void midi_read_infile_arguments() {
     uint8_t lsb_rpn = 0, msb_rpn = 0;
     uint32_t last_event = 0;
 
+    std::vector<bool> volume_init(mf.midi_tracks.size(), false);
+
     // parse meta events
-    for (midi_track& mtrk : mf.midi_tracks) {
+    for (size_t itrk = 0; itrk < mf.midi_tracks.size(); itrk++) {
+        midi_track& mtrk = mf[itrk];
         for (size_t ievt = 0; ievt < mtrk.midi_events.size(); ievt++) {
             midi_event& ev = *mtrk[ievt];
             last_event = std::max(ev.ticks, last_event);
@@ -581,6 +584,8 @@ static void midi_read_infile_arguments() {
                     mtrk[ievt] = std::make_unique<controller_message_midi_event>(
                             cev.ticks, cev.channel(),
                             MIDI_CC_EX_BENDR, cev.get_value());
+                } else if (cev.get_controller() == MIDI_CC_MSB_VOLUME) {
+                    volume_init[itrk] = true;
                 }
                 continue;
             } else if (typeid(ev) == typeid(noteoff_message_midi_event)) {
@@ -665,11 +670,12 @@ static void midi_read_infile_arguments() {
                 arg_mod_scale = clamp(arg_mod_scale, 0.0f, 16.0f);
                 // the actual scale get's applied in a seperate filter
             }
-        }
-    } // end meta event track loop
+        } // end event loop
+    } // end track loop
 
     // insert loop and global events
-    for (midi_track& mtrk : mf.midi_tracks) {
+    for (size_t itrk = 0; itrk < mf.midi_tracks.size(); itrk++) {
+        midi_track& mtrk = mf[itrk];
         int chn = trk_get_channel_num(mtrk);
         // chn mustn't be negative because track with no message events
         // have been sorted out previously
@@ -719,6 +725,16 @@ static void midi_read_infile_arguments() {
             std::unique_ptr<midi_event> cev(new controller_message_midi_event(
                         0, static_cast<uint8_t>(chn),
                         MIDI_CC_EX_LFODL, arg_lfos));
+            auto insert_pos = std::upper_bound(
+                    mtrk.midi_events.begin(),
+                    mtrk.midi_events.end(),
+                    cev, ev_tick_cmp);
+            mtrk.midi_events.insert(insert_pos, std::move(cev));
+        }
+        if (!volume_init[itrk]) {
+            std::unique_ptr<midi_event> cev(new controller_message_midi_event(
+                        0, static_cast<uint8_t>(chn),
+                        MIDI_CC_MSB_VOLUME, 127));
             auto insert_pos = std::upper_bound(
                     mtrk.midi_events.begin(),
                     mtrk.midi_events.end(),
@@ -1003,15 +1019,12 @@ static void midi_apply_loop_and_state_reset() {
 static void midi_remove_redundant_events() {
     using namespace cppmidi;
 
-    // TODO remove var
-    int trk = -1;
-
     for (midi_track& mtrk : mf.midi_tracks) {
-        trk++;
         uint8_t tempo = 150 / 2;
         uint8_t voice = 0;
         bool voice_init = false;
-        uint8_t vol = 100;
+        uint8_t vol = 127;
+        bool vol_init = false;
         uint8_t pan = 0x40;
         int8_t bend = 0;
         uint8_t bendr = 2;
@@ -1064,11 +1077,12 @@ static void midi_remove_redundant_events() {
                 uint8_t ctrl = cev.get_controller();
                 switch (ctrl) {
                 case MIDI_CC_MSB_VOLUME:
-                    if ((vol == cev.get_value()) ||
+                    if ((vol_init && vol == cev.get_value()) ||
                             find_next_event_at_tick_index<controller_message_midi_event,
                             MIDI_CC_MSB_VOLUME>(mtrk, ievt, dummy)) {
                         mtrk[ievt] = std::make_unique<dummy_midi_event>(mtrk[ievt]->ticks);
                     } else {
+                        vol_init = true;
                         vol = cev.get_value();
                     }
                     break;
