@@ -1736,7 +1736,7 @@ static void write_event(std::ofstream& ofs, agb_state& state, const agb_ev& ev, 
                         note_names[ev.tie.key], ev.tie.vel);
                 state.note_key = ev.tie.key;
                 state.note_vel = ev.tie.vel;
-                state.may_repeat = true;
+                state.may_repeat = false;
             }
             state.cmd_state = agb_state::cmd::TIE;
         }
