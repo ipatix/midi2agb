@@ -1742,7 +1742,6 @@ static void write_event(std::ofstream& ofs, agb_state& state, const agb_ev& ev, 
         }
         break;
     case agb_ev::ty::NOTE:
-        assert(state.note_len == len_table[state.note_len]);
         assert(ev.note.len > 0 && ev.note.len <= 96);
         assert(ev.note.len - len_table[ev.note.len] <= 3);
         assert(ev.note.key < 128);
@@ -1766,7 +1765,7 @@ static void write_event(std::ofstream& ofs, agb_state& state, const agb_ev& ev, 
                         note_names[ev.note.key], ev.note.vel, gate_names[gi]);
                 state.note_key = ev.note.key;
                 state.note_vel = ev.note.vel;
-                state.note_len = len_table[ev.note.len];
+                state.note_len = ev.note.len;
             } else if (ev.note.len == len_table[ev.note.len] &&
                     state.note_key == ev.note.key &&
                     state.note_vel == ev.note.vel) {
@@ -1795,7 +1794,7 @@ static void write_event(std::ofstream& ofs, agb_state& state, const agb_ev& ev, 
                         ev.note.vel, gate_names[gi]);
                 state.note_key = ev.note.key;
                 state.note_vel = ev.note.vel;
-                state.note_len = len_table[ev.note.len];
+                state.note_len = ev.note.len;
             }
         } else {
             int gate_time = ev.note.len - len_table[ev.note.len];
@@ -1823,7 +1822,7 @@ static void write_event(std::ofstream& ofs, agb_state& state, const agb_ev& ev, 
                 agb_out(ofs, "        .byte           N%02d   , %s , v%03d , %s\n",
                         len_table[ev.note.len], note_names[ev.note.key],
                         ev.note.vel, gate_names[gi]);
-                state.note_len = len_table[ev.note.len];
+                state.note_len = ev.note.len;
                 state.note_key = ev.note.key;
                 state.note_vel = ev.note.vel;
                 state.may_repeat = true;
