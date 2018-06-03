@@ -901,6 +901,7 @@ static void midi_apply_loop_and_state_reset() {
 
     for (midi_track& mtrk : mf.midi_tracks) {
         uint32_t tempo = 500000; // 120 bpm
+        bool tempo_init = false;
         uint8_t voice = 0;
         uint8_t vol = 100;
         uint8_t pan = 0x40;
@@ -919,8 +920,10 @@ static void midi_apply_loop_and_state_reset() {
             midi_event& ev = *mtrk[itrk];
             if (typeid(ev) == typeid(tempo_meta_midi_event)) {
                 tempo_meta_midi_event& tev = static_cast<tempo_meta_midi_event&>(ev);
-                if (ev.ticks <= loop_start_tick)
+                if (ev.ticks <= loop_start_tick) {
                     tempo = tev.get_us_per_beat();
+                    tempo_init = true;
+                }
             } else if (typeid(ev) == typeid(program_message_midi_event)) {
                 program_message_midi_event& pev = static_cast<program_message_midi_event&>(ev);
                 if (ev.ticks <= loop_start_tick)
@@ -969,8 +972,10 @@ static void midi_apply_loop_and_state_reset() {
                             ev.ticks > loop_start_tick) {
                         // loop end insert events for start state
                         std::vector<std::unique_ptr<midi_event>> ptrs;
-                        ptrs.emplace_back(new tempo_meta_midi_event(
-                                    ev.ticks, tempo));
+                        if (tempo_init) {
+                            ptrs.emplace_back(new tempo_meta_midi_event(
+                                        ev.ticks, tempo));
+                        }
                         ptrs.emplace_back(new program_message_midi_event(
                                     ev.ticks, cev.channel(),
                                     voice));
