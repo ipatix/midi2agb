@@ -32,9 +32,9 @@ static void usage() {
     err("-v            | output debug information\n");
     err("--modt <val>  | global modulation type 0..2\n");
     err("--modsc <val> | global modulation scale 0.0 - 16.0\n");
-    err("--lfos <val>  | global modulation speed 0..255\n");
+    err("--lfos <val>  | global modulation speed 0..127\n");
     err("              | (val * 24 / 256) oscillations per beat\n");
-    err("--lfodl <val> | global modulation delay 0..255 ticks\n");
+    err("--lfodl <val> | global modulation delay 0..127 ticks\n");
     exit(1);
 }
 
