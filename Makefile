@@ -9,10 +9,9 @@ LIBS =
 SRC_FILES = $(wildcard *.cpp)
 OBJ_FILES = $(SRC_FILES:.cpp=.o) cppmidi/cppmidi.o
 
+.PHONY: all clean
 all: $(BINARY)
-	
 
-.PHONY: clean
 clean:
 	rm -f $(OBJ_FILES)
 
