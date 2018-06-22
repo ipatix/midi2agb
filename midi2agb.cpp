@@ -21,7 +21,7 @@ static void err(const char *msg, ...);
 static void usage() {
     err("midi2agb, version %s\n", GIT_VERSION);
     err("\n");
-    err("Usage:\n$ midi2agb <input.mid> [<output.mid>] [options]\n\n");
+    err("Usage: midi2agb [options] <input.mid> [<output.s>]\n\n");
     err("Options:\n");
     err("-s <sym>      | symbol name for song header (default: file name)\n");
     err("-m <mvl>      | master volume 0..128 (default: 128)\n");
