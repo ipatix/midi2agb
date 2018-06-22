@@ -1702,12 +1702,13 @@ static void write_event(std::ofstream& ofs, agb_state& state, const agb_ev& ev, 
         } else {
             if (state.note_key == ev.eot.key) {
                 agb_out(ofs, "        .byte           EOT\n");
+                state.may_repeat = false;
             } else {
                 agb_out(ofs, "        .byte           EOT   , %s\n",
                         note_names[ev.eot.key]);
                 state.note_key = ev.eot.key;
+                state.may_repeat = true;
             }
-            state.may_repeat = true;
             state.cmd_state = agb_state::cmd::EOT;
         }
         break;
