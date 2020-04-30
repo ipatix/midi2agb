@@ -1,9 +1,9 @@
 GIT_VERSION := $(shell git describe --abbrev=7 --dirty --always --tags)
 
-CXX = g++
-STRIP = strip
-CXXFLAGS = -Wall -Wextra -Wconversion -std=c++14 -O2 -g -DGIT_VERSION=\"$(GIT_VERSION)\"
-BINARY = midi2agb
+CXX = x86_64-w64-mingw32-g++
+STRIP = x86_64-w64-mingw32-strip
+CXXFLAGS = -Wall -Wextra -Wconversion -std=c++14 -O2 -g -DGIT_VERSION=\"$(GIT_VERSION)\" -flto
+BINARY = midi2agb.exe
 LIBS = 
 
 SRC_FILES = $(wildcard *.cpp)
@@ -16,5 +16,5 @@ clean:
 	rm -f $(OBJ_FILES) $(BINARY)
 
 $(BINARY): $(OBJ_FILES)
-	$(CXX) -o $@ $^ $(LIBS)
-	#$(STRIP) -s $@
+	$(CXX) -o $@ $^ $(CXXFLAGS) $(LIBS) -static
+	$(STRIP) -s $@
