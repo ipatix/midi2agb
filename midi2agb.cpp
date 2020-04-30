@@ -804,21 +804,29 @@ static void midi_remove_empty_tracks() {
     }
 
     // all empty tracks deleted, now reinsert tempo events to first track
+    auto event_insertion_range_start = mf[0].midi_events.begin();
     for (std::unique_ptr<midi_event>& tev : tempo_track.midi_events) {
         // locate position for insertion
         auto position = std::lower_bound(
-                mf[0].midi_events.begin(),
+                event_insertion_range_start,
                 mf[0].midi_events.end(),
                 tev, ev_tick_cmp);
         mf[0].midi_events.insert(position, std::move(tev));
+        // do not allow events to be inserted before the previous ones
+        event_insertion_range_start = position + 1;
     }
 
+    // same for time signatures
+    event_insertion_range_start = mf[0].midi_events.begin();
     for (std::unique_ptr<midi_event>& tev : timesignature_track.midi_events) {
+        // locate position for insertion
         auto position = std::lower_bound(
-                mf[0].midi_events.begin(),
+                event_insertion_range_start,
                 mf[0].midi_events.end(),
                 tev, ev_tick_cmp);
         mf[0].midi_events.insert(position, std::move(tev));
+        // do not allow events to be inserted before the previous ones
+        event_insertion_range_start = position + 1;
     }
     // done
 }
