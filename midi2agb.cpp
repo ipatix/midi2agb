@@ -609,7 +609,7 @@ static void midi_read_infile_arguments() {
                 int modt = std::stoi(ev_text.substr(5));
                 modt = clamp(modt, 0, 2);
                 int channel = trk_get_channel_num(mtrk);
-                if (channel > 0) {
+                if (channel >= 0) {
                     mtrk[ievt] = std::make_unique<controller_message_midi_event>(
                             ev.ticks, channel, MIDI_CC_EX_MODT,
                             static_cast<uint8_t>(modt));
@@ -623,7 +623,7 @@ static void midi_read_infile_arguments() {
                 int tune = std::stoi(ev_text.substr(5));
                 tune = clamp(tune, -64, 63);
                 int channel = trk_get_channel_num(mtrk);
-                if (channel > 0) {
+                if (channel >= 0) {
                     mtrk[ievt] = std::make_unique<controller_message_midi_event>(
                             ev.ticks, channel, MIDI_CC_EX_TUNE,
                             static_cast<uint8_t>(tune));
@@ -632,7 +632,7 @@ static void midi_read_infile_arguments() {
                 int lfos = std::stoi(ev_text.substr(5));
                 lfos = clamp(lfos, 0, 127);
                 int channel = trk_get_channel_num(mtrk);
-                if (channel > 0) {
+                if (channel >= 0) {
                     mtrk[ievt] = std::make_unique<controller_message_midi_event>(
                             ev.ticks, channel, MIDI_CC_EX_LFOS,
                             static_cast<uint8_t>(lfos));
@@ -646,7 +646,7 @@ static void midi_read_infile_arguments() {
                 int lfodl = std::stoi(ev_text.substr(6));
                 lfodl = clamp(lfodl, 0, 127);
                 int channel = trk_get_channel_num(mtrk);
-                if (channel > 0) {
+                if (channel >= 0) {
                     mtrk[ievt] = std::make_unique<controller_message_midi_event>(
                             ev.ticks, channel, MIDI_CC_EX_LFODL,
                             static_cast<uint8_t>(lfodl));
@@ -660,7 +660,7 @@ static void midi_read_infile_arguments() {
                 int prio = std::stoi(ev_text.substr(5));
                 prio = clamp(prio, 0, 127);
                 int channel = trk_get_channel_num(mtrk);
-                if (channel > 0) {
+                if (channel >= 0) {
                     mtrk[ievt] = std::make_unique<controller_message_midi_event>(
                             ev.ticks, channel, MIDI_CC_EX_PRIO,
                             static_cast<uint8_t>(prio));
@@ -724,7 +724,7 @@ static void midi_read_infile_arguments() {
         if (arg_lfodl_global) {
             std::unique_ptr<midi_event> cev(new controller_message_midi_event(
                         0, static_cast<uint8_t>(chn),
-                        MIDI_CC_EX_LFODL, arg_lfos));
+                        MIDI_CC_EX_LFODL, arg_lfodl));
             auto insert_pos = std::upper_bound(
                     mtrk.midi_events.begin(),
                     mtrk.midi_events.end(),
@@ -1045,6 +1045,8 @@ static void midi_remove_redundant_events() {
         uint8_t modt = 0;
         uint8_t tune = 0x40;
         uint8_t prio = 0;
+        uint8_t lfodl = 0;
+        uint8_t lfos = 22;
 
         size_t dummy;
 
@@ -1126,6 +1128,15 @@ static void midi_remove_redundant_events() {
                         mod = cev.get_value();
                     }
                     break;
+                case MIDI_CC_EX_LFOS:
+                    if ((lfos == cev.get_value()) ||
+                            find_next_event_at_tick_index<controller_message_midi_event,
+                            MIDI_CC_EX_LFOS>(mtrk, ievt, dummy)) {
+                        mtrk[ievt] = std::make_unique<dummy_midi_event>(mtrk[ievt]->ticks);
+                    } else {
+                        lfos = cev.get_value();
+                    }
+                    break;
                 case MIDI_CC_EX_MODT:
                     if ((modt == cev.get_value()) ||
                             find_next_event_at_tick_index<controller_message_midi_event,
@@ -1142,6 +1153,15 @@ static void midi_remove_redundant_events() {
                         mtrk[ievt] = std::make_unique<dummy_midi_event>(mtrk[ievt]->ticks);
                     } else {
                         tune = cev.get_value();
+                    }
+                    break;
+                case MIDI_CC_EX_LFODL:
+                    if ((lfodl == cev.get_value()) ||
+                            find_next_event_at_tick_index<controller_message_midi_event,
+                            MIDI_CC_EX_LFODL>(mtrk, ievt, dummy)) {
+                        mtrk[ievt] = std::make_unique<dummy_midi_event>(mtrk[ievt]->ticks);
+                    } else {
+                        lfodl = cev.get_value();
                     }
                     break;
                 case MIDI_CC_EX_LOOP:
