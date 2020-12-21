@@ -860,7 +860,7 @@ static void midi_apply_filters() {
             x = std::round(x);
         }
         // clamp to lower 1 because midi velocity 0 is a note off
-        return static_cast<uint8_t>(std::clamp(static_cast<int>(x), 0, 127));
+        return static_cast<uint8_t>(std::clamp(static_cast<int>(x), 1, 127));
     };
 
     for (midi_track& mtrk : mf.midi_tracks) {
