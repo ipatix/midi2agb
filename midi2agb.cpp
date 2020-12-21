@@ -465,16 +465,6 @@ struct agb_song {
 
 agb_song as;
 
-/*
- * std::clamp theoretically is in C++17 but at least today
- * gcc won't even compile it's own headers with c++1z enabled
- */
-template<typename T>
-const T& clamp(const T& v, const T& lo, const T& hi) {
-    assert(lo <= hi);
-    return (v < lo) ? lo : (hi < v) ? hi : v;
-}
-
 static inline bool ev_tick_cmp(
         const std::unique_ptr<cppmidi::midi_event>& a,
         const std::unique_ptr<cppmidi::midi_event>& b) {
@@ -607,7 +597,7 @@ static void midi_read_infile_arguments() {
                 loop_end = ev.ticks;
             } else if (!strncmp(ev_text.c_str(), "modt=", 5)) {
                 int modt = std::stoi(ev_text.substr(5));
-                modt = clamp(modt, 0, 2);
+                modt = std::clamp(modt, 0, 2);
                 int channel = trk_get_channel_num(mtrk);
                 if (channel >= 0) {
                     mtrk[ievt] = std::make_unique<controller_message_midi_event>(
@@ -617,11 +607,11 @@ static void midi_read_infile_arguments() {
             } else if (!strncmp(ev_text.c_str(), "modt_global=", 12)) {
                 arg_modt_global = true;
                 int modt = std::stoi(ev_text.substr(12));
-                modt = clamp(modt, 0, 2);
+                modt = std::clamp(modt, 0, 2);
                 arg_modt = static_cast<uint8_t>(modt);
             } else if (!strncmp(ev_text.c_str(), "tune=", 5)) {
                 int tune = std::stoi(ev_text.substr(5));
-                tune = clamp(tune, -64, 63);
+                tune = std::clamp(tune, -64, 63);
                 int channel = trk_get_channel_num(mtrk);
                 if (channel >= 0) {
                     mtrk[ievt] = std::make_unique<controller_message_midi_event>(
@@ -630,7 +620,7 @@ static void midi_read_infile_arguments() {
                 }
             } else if (!strncmp(ev_text.c_str(), "lfos=", 5)) {
                 int lfos = std::stoi(ev_text.substr(5));
-                lfos = clamp(lfos, 0, 127);
+                lfos = std::clamp(lfos, 0, 127);
                 int channel = trk_get_channel_num(mtrk);
                 if (channel >= 0) {
                     mtrk[ievt] = std::make_unique<controller_message_midi_event>(
@@ -640,11 +630,11 @@ static void midi_read_infile_arguments() {
             } else if (!strncmp(ev_text.c_str(), "lfos_global=", 12)) {
                 arg_lfos_global = true;
                 int lfos = std::stoi(ev_text.substr(12));
-                lfos = clamp(lfos, 0, 127);
+                lfos = std::clamp(lfos, 0, 127);
                 arg_lfos = static_cast<uint8_t>(lfos);
             } else if (!strncmp(ev_text.c_str(), "lfodl=", 6)) {
                 int lfodl = std::stoi(ev_text.substr(6));
-                lfodl = clamp(lfodl, 0, 127);
+                lfodl = std::clamp(lfodl, 0, 127);
                 int channel = trk_get_channel_num(mtrk);
                 if (channel >= 0) {
                     mtrk[ievt] = std::make_unique<controller_message_midi_event>(
@@ -654,11 +644,11 @@ static void midi_read_infile_arguments() {
             } else if (!strncmp(ev_text.c_str(), "lfodl_global=", 13)) {
                 arg_lfodl_global = true;
                 int lfodl = std::stoi(ev_text.substr(13));
-                lfodl = clamp(lfodl, 0, 127);
+                lfodl = std::clamp(lfodl, 0, 127);
                 arg_lfodl = static_cast<uint8_t>(lfodl);
             } else if (!strncmp(ev_text.c_str(), "prio=", 5)) {
                 int prio = std::stoi(ev_text.substr(5));
-                prio = clamp(prio, 0, 127);
+                prio = std::clamp(prio, 0, 127);
                 int channel = trk_get_channel_num(mtrk);
                 if (channel >= 0) {
                     mtrk[ievt] = std::make_unique<controller_message_midi_event>(
@@ -667,7 +657,7 @@ static void midi_read_infile_arguments() {
                 }
             } else if (!strncmp(ev_text.c_str(), "modscale_global=", 16)) {
                 arg_mod_scale = std::stof(ev_text.substr(16));
-                arg_mod_scale = clamp(arg_mod_scale, 0.0f, 16.0f);
+                arg_mod_scale = std::clamp(arg_mod_scale, 0.0f, 16.0f);
                 // the actual scale get's applied in a seperate filter
             }
         } // end event loop
@@ -858,7 +848,7 @@ static void midi_apply_filters() {
             x /= 127.0 * 128.0;
             x = std::round(x);
         }
-        return static_cast<uint8_t>(clamp(static_cast<int>(x), 0, 127));
+        return static_cast<uint8_t>(std::clamp(static_cast<int>(x), 0, 127));
     };
 
     auto vel_scale = [&](uint8_t vel) {
@@ -870,7 +860,7 @@ static void midi_apply_filters() {
             x = std::round(x);
         }
         // clamp to lower 1 because midi velocity 0 is a note off
-        return static_cast<uint8_t>(clamp(static_cast<int>(x), 0, 127));
+        return static_cast<uint8_t>(std::clamp(static_cast<int>(x), 0, 127));
     };
 
     for (midi_track& mtrk : mf.midi_tracks) {
@@ -892,7 +882,7 @@ static void midi_apply_filters() {
                 } else if (ctrl_ev.get_controller() == MIDI_CC_MSB_MOD) {
                     float scaled_mod = ctrl_ev.get_value() * arg_mod_scale;
                     scaled_mod = std::roundf(scaled_mod);
-                    ctrl_ev.set_value(static_cast<uint8_t>(clamp(scaled_mod, 0.0f, 127.0f)));
+                    ctrl_ev.set_value(static_cast<uint8_t>(std::clamp(scaled_mod, 0.0f, 127.0f)));
                 }
             }
             else if (typeid(ev) == typeid(noteon_message_midi_event)) {
@@ -1055,7 +1045,7 @@ static void midi_remove_redundant_events() {
             if (typeid(ev) == typeid(tempo_meta_midi_event)) {
                 tempo_meta_midi_event& tev = static_cast<tempo_meta_midi_event&>(ev);
                 double halved_bpm = std::round(tev.get_bpm() * 0.5);
-                halved_bpm = clamp(halved_bpm, 0.0, 255.0);
+                halved_bpm = std::clamp(halved_bpm, 0.0, 255.0);
                 uint8_t utempo = static_cast<uint8_t>(halved_bpm);
                 if ((tempo == utempo) ||
                         find_next_event_at_tick_index<tempo_meta_midi_event>(
@@ -1078,7 +1068,7 @@ static void midi_remove_redundant_events() {
                 pitchbend_message_midi_event& pev = static_cast<pitchbend_message_midi_event&>(ev);
                 double dbend = pev.get_pitch() / 128.0;
                 dbend = std::round(dbend);
-                dbend = clamp(dbend, -64.0, +63.0);
+                dbend = std::clamp(dbend, -64.0, +63.0);
                 int8_t ubend = static_cast<int8_t>(dbend);
                 if ((bend == ubend) ||
                         find_next_event_at_tick_index<pitchbend_message_midi_event>(
@@ -1382,7 +1372,7 @@ static void midi_to_agb() {
                 const tempo_meta_midi_event& tev =
                     static_cast<const tempo_meta_midi_event&>(ev);
                 double bpm = tev.get_bpm() / 2.0;
-                bpm = clamp(bpm, 0.0, 255.0);
+                bpm = std::clamp(bpm, 0.0, 255.0);
                 bpm = std::round(bpm);
                 atrk.bars.back().events.emplace_back(agb_ev::ty::TEMPO);
                 atrk.bars.back().events.back().tempo = static_cast<uint8_t>(bpm);
@@ -1396,7 +1386,7 @@ static void midi_to_agb() {
                     static_cast<const pitchbend_message_midi_event&>(ev);
                 double pitch = pev.get_pitch() / 128.0;
                 pitch = std::round(pitch);
-                pitch = clamp(pitch, -64.0, +63.0);
+                pitch = std::clamp(pitch, -64.0, +63.0);
                 atrk.bars.back().events.emplace_back(agb_ev::ty::BEND);
                 atrk.bars.back().events.back().bend = static_cast<int8_t>(pitch);
             } else if (typeid(ev) == typeid(noteon_message_midi_event)) {
