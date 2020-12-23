@@ -11,6 +11,7 @@
 #include <cmath>
 #include <cassert>
 #include <cstring>
+#include <filesystem>
 
 #include "cppmidi/cppmidi.h"
 
@@ -51,51 +52,6 @@ static void fix_str(std::string& str) {
     }
 }
 
-static char path_seperators[] = {
-    '/',
-#ifdef _WIN32
-    '\\',
-#endif
-    '\0'
-};
-
-static std::string filename_without_ext(const std::string& str) {
-    size_t last_path_seperator = 0;
-    char *sep = path_seperators;
-    while (*sep) {
-        size_t pos = str.find_last_of(*sep);
-        if (pos != std::string::npos)
-            last_path_seperator = std::max(pos, last_path_seperator);
-        sep += 1;
-    }
-    size_t file_ext_dot_pos = str.find_last_of('.');
-    if (file_ext_dot_pos == std::string::npos)
-        return std::string(str);
-    assert(file_ext_dot_pos != last_path_seperator);
-    if (file_ext_dot_pos > last_path_seperator)
-        return str.substr(0, file_ext_dot_pos);
-    return std::string(str);
-}
-
-static std::string filename_without_dir(const std::string& str) {
-    size_t last_path_seperator = 0;
-    bool path_seperator_found = false;
-    char *sep = path_seperators;
-    while (*sep) {
-        size_t pos = str.find_last_of(*sep);
-        if (pos != std::string::npos) {
-            last_path_seperator = std::max(pos, last_path_seperator);
-            path_seperator_found = true;
-        }
-        sep += 1;
-    }
-    if (str.size() > 0 && path_seperator_found) {
-        return str.substr(last_path_seperator + 1);
-    } else {
-        return std::string(str);
-    }
-}
-
 static std::string arg_sym;
 static uint8_t arg_mvl = 128;
 static std::string arg_vgr;
@@ -113,9 +69,9 @@ static uint8_t arg_lfodl = 0;
 static bool arg_lfodl_global = false;
 static float arg_mod_scale = 1.0f;
 
-static std::string arg_input_file;
+static std::filesystem::path arg_input_file;
 static bool arg_input_file_read = false;
-static std::string arg_output_file;
+static std::filesystem::path arg_output_file;
 static bool arg_output_file_read = false;
 
 // misc arguments
@@ -220,12 +176,12 @@ int main(int argc, char *argv[]) {
                 }
                 if (!arg_input_file_read) {
                     arg_input_file = argv[i];
-                    if (arg_input_file.size() < 1)
+                    if (arg_input_file.empty())
                         die("empty input file name\n");
                     arg_input_file_read = true;
                 } else if (!arg_output_file_read) {
                     arg_output_file = argv[i];
-                    if (arg_output_file.size() < 1)
+                    if (arg_output_file.empty())
                         die("empty output file name\n");
                     arg_output_file_read = true;
                 } else {
@@ -241,12 +197,13 @@ int main(int argc, char *argv[]) {
 
         if (!arg_output_file_read) {
             // create output file name if none is provided
-            arg_output_file = filename_without_ext(arg_input_file) + ".s";
+            arg_output_file = arg_input_file;
+            arg_output_file.replace_extension("s");
             arg_output_file_read = true;
         }
 
         if (arg_sym.size() == 0) {
-            arg_sym = filename_without_dir(filename_without_ext(arg_output_file));
+            arg_sym = arg_output_file.filename().replace_extension("");
             fix_str(arg_sym);
         }
         if (arg_vgr.size() == 0) {
