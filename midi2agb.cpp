@@ -203,7 +203,8 @@ int main(int argc, char *argv[]) {
         }
 
         if (arg_sym.size() == 0) {
-            arg_sym = arg_output_file.filename().replace_extension("");
+            // .string() can technically be omitted, but MinGW still wants it :/
+            arg_sym = arg_output_file.filename().replace_extension("").string();
             fix_str(arg_sym);
         }
         if (arg_vgr.size() == 0) {
