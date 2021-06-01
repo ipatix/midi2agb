@@ -617,6 +617,35 @@ static void midi_read_infile_arguments() {
                 arg_mod_scale = std::stof(ev_text.substr(16));
                 arg_mod_scale = std::clamp(arg_mod_scale, 0.0f, 16.0f);
                 // the actual scale get's applied in a seperate filter
+            } else if (!strncmp(ev_text.c_str(), "sym=", 4)) {
+                arg_sym = ev_text.substr(4);
+                fix_str(arg_sym);
+            } else if (!strncmp(ev_text.c_str(), "mvl=", 4)) {
+                int mvl = std::stoi(ev_text.substr(4));
+                if (mvl < 0 || mvl > 128)
+                    die("infile \"mvl=%d\" out of range\n", mvl);
+                arg_mvl = static_cast<uint8_t>(mvl);
+            } else if (!strncmp(ev_text.c_str(), "vgr=", 4)) {
+                arg_vgr = ev_text.substr(4);
+                fix_str(arg_vgr);
+            } else if (!strncmp(ev_text.c_str(), "pri=", 4)) {
+                int prio = std::stoi(ev_text.substr(4));
+                if (prio < 0 || prio > 127)
+                    die("infile \"pri=%d\" out of range\n", prio);
+                arg_pri = static_cast<uint8_t>(prio);
+            } else if (!strncmp(ev_text.c_str(), "rev=", 4)) {
+                int rev = std::stoi(ev_text.substr(4));
+                if (rev < 0 || rev > 127)
+                    die("infile \"rev=%d\" out of range\n", rev);
+                arg_rev = static_cast<uint8_t>(rev);
+            } else if (!strncmp(ev_text.c_str(), "nat=", 4)) {
+                int nat = std::stoi(ev_text.substr(4));
+                if (nat < 0 || nat > 1)
+                    die("infile \"nat=%d\" out of range\n", nat);
+                if (nat == 1)
+                    arg_natural = true;
+                else
+                    arg_natural = false;
             }
         } // end event loop
     } // end track loop
