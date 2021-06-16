@@ -1027,6 +1027,14 @@ static void midi_remove_redundant_events() {
 
         size_t dummy;
 
+        /*
+         * For various event types: Delete an event if it doesn't change
+         * the MIDI state in any way. An event may also be deleted if an
+         * event of the same type follows within the same tick. However,
+         * do not do this for voice events since this may cause wrong
+         * instruments to play. (fixes #2)
+         */
+
         for (size_t ievt = 0; ievt < mtrk.midi_events.size(); ievt++) {
             midi_event& ev = *mtrk.midi_events[ievt];
             if (typeid(ev) == typeid(tempo_meta_midi_event)) {
@@ -1043,9 +1051,7 @@ static void midi_remove_redundant_events() {
                 }
             } else if (typeid(ev) == typeid(program_message_midi_event)) {
                 program_message_midi_event& pev = static_cast<program_message_midi_event&>(ev);
-                if ((voice_init && pev.get_program() == voice) ||
-                        find_next_event_at_tick_index<program_message_midi_event>(
-                            mtrk, ievt, dummy)) {
+                if (voice_init && pev.get_program() == voice) {
                     mtrk[ievt] = std::make_unique<dummy_midi_event>(mtrk[ievt]->ticks);
                 } else {
                     voice_init = true;
