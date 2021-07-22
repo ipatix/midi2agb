@@ -1731,7 +1731,6 @@ static void write_event(std::ofstream& ofs, agb_state& state, const agb_ev& ev, 
                 agb_out(ofs, "        .byte                   %s\n",
                         note_names[ev.tie.key]);
                 state.note_key = ev.tie.key;
-                state.may_repeat = false;
             } else {
                 agb_out(ofs, "        .byte                   %s , v%03d\n",
                         note_names[ev.tie.key], ev.tie.vel);
@@ -1742,21 +1741,22 @@ static void write_event(std::ofstream& ofs, agb_state& state, const agb_ev& ev, 
             if (state.note_key == ev.tie.key &&
                     state.note_vel == ev.tie.vel) {
                 agb_out(ofs, "        .byte           TIE\n");
-                state.may_repeat = false;
             } else if (state.note_vel == ev.tie.vel) {
                 agb_out(ofs, "        .byte           TIE   , %s\n",
                         note_names[ev.tie.key]);
                 state.note_key = ev.tie.key;
-                state.may_repeat = false;
             } else {
                 agb_out(ofs, "        .byte           TIE   , %s , v%03d\n",
                         note_names[ev.tie.key], ev.tie.vel);
                 state.note_key = ev.tie.key;
                 state.note_vel = ev.tie.vel;
-                state.may_repeat = false;
             }
             state.cmd_state = agb_state::cmd::TIE;
         }
+        // Because TIE is processed the same as N?? (note) and lacks the gtp? parameter
+        // it must not be repeated directly in all cases. However, it may be repeated after
+        // a W?? for exaxmple.
+        state.may_repeat = false;
         break;
     case agb_ev::ty::NOTE:
         assert(ev.note.len > 0 && ev.note.len <= 96);
