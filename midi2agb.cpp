@@ -169,6 +169,27 @@ int main(int argc, char *argv[]) {
                     die("--lfodl: parameter %d out of range\n", lfodl);
                 arg_lfodl = static_cast<uint8_t>(lfodl);
                 arg_lfodl_global = true;
+            } else if (!st.compare(0, 2, "-V")) {
+                int mvl = std::stoi(st.substr(2));
+                if (mvl < 0 || mvl > 128)
+                    die("-V: parameter %d out of range\n", mvl);
+                arg_mvl = static_cast<uint8_t>(mvl);
+            } else if (!st.compare(0, 2, "-G")) {
+                arg_vgr = std::string("voicegroup") + st.substr(2);
+                fix_str(arg_vgr);
+            } else if (!st.compare(0, 2, "-P")) {
+                int prio = std::stoi(st.substr(2));
+                if (prio < 0 || prio > 127)
+                    die("-P: parameter %d out of range\n", prio);
+                arg_pri = static_cast<uint8_t>(prio);
+            } else if (!st.compare(0, 2, "-R")) {
+                int rev = std::stoi(argv[i]);
+                if (rev < 0 || rev > 127)
+                    die("-R: parameter %d out of range\n", rev);
+                arg_rev = static_cast<uint8_t>(rev);
+            } else if (!st.compare(0, 2, "-L")) {
+                arg_sym = st.substr(2);
+                fix_str(arg_sym);
             } else {
                 if (!st.compare("--")) {
                     if (++i >= argc)
