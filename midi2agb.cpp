@@ -1284,7 +1284,8 @@ static void midi_to_agb() {
         }
     };
 
-    for (midi_track& mtrk : mf.midi_tracks) {
+    for (size_t itrk = 0; itrk < mf.midi_tracks.size(); itrk++) {
+        midi_track& mtrk = mf.midi_tracks[itrk];
         as.tracks.emplace_back();
         agb_track& atrk = as.tracks.back();
         atrk.bars.emplace_back();
@@ -1434,13 +1435,13 @@ static void midi_to_agb() {
                         noteoff_ev.set_velocity(MIDI_NOTE_PARSE_SHORT);
                     }
                 } else {
-                    die("ERROR: Couldn't find Note OFF for Note ON (at tick=%zu)\n", ev.ticks);
+                    die("ERROR: Couldn't find Note OFF for Note ON (at track=%zu tick=%zu)\n", itrk, ev.ticks);
                 }
             } else if (typeid(ev) == typeid(noteoff_message_midi_event)) {
                 const noteoff_message_midi_event& noteoff_ev =
                     static_cast<const noteoff_message_midi_event&>(ev);
                 if (noteoff_ev.get_velocity() == MIDI_NOTE_PARSE_INIT)
-                    die("ERROR: Note OFF without initial Note ON (at tick=%zu)\n", ev.ticks);
+                    die("ERROR: Note OFF without initial Note ON (at track=%zu tick=%zu)\n", itrk, ev.ticks);
                 if (noteoff_ev.get_velocity() == MIDI_NOTE_PARSE_TIE) {
                     atrk.bars.back().events.emplace_back(agb_ev::ty::EOT);
                     atrk.bars.back().events.back().eot.key =
