@@ -1434,13 +1434,13 @@ static void midi_to_agb() {
                         noteoff_ev.set_velocity(MIDI_NOTE_PARSE_SHORT);
                     }
                 } else {
-                    die("ERROR: Couldn't find Note OFF for Note ON\n");
+                    die("ERROR: Couldn't find Note OFF for Note ON (at tick=%zu)\n", ev.ticks);
                 }
             } else if (typeid(ev) == typeid(noteoff_message_midi_event)) {
                 const noteoff_message_midi_event& noteoff_ev =
                     static_cast<const noteoff_message_midi_event&>(ev);
                 if (noteoff_ev.get_velocity() == MIDI_NOTE_PARSE_INIT)
-                    die("ERROR: Note OFF without initial Note ON\n");
+                    die("ERROR: Note OFF without initial Note ON (at tick=%zu)\n", ev.ticks);
                 if (noteoff_ev.get_velocity() == MIDI_NOTE_PARSE_TIE) {
                     atrk.bars.back().events.emplace_back(agb_ev::ty::EOT);
                     atrk.bars.back().events.back().eot.key =
