@@ -2,10 +2,10 @@ name: Windows Build (MinGW)
 
 on:
   push:
-#    tags:
-#      - 'v*'
+    tags:
+      - 'v*'
     branches:
-      - 'ci-test'
+      - 'master'
   workflow_dispatch:
 
 # MSYS2 How To:
