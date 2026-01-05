@@ -1221,16 +1221,11 @@ static void midi_to_agb() {
         return;
     const midi_track& mtrk = mf[0];
 
-    uint32_t prev_tick = 0;
-
     for (size_t ievt = 0; ievt < mtrk.midi_events.size(); ievt++) {
-        uint32_t diff_ticks = mtrk[ievt]->ticks - prev_tick;
-        prev_tick = mtrk[ievt]->ticks;
-
-        bar_table.back().num_ticks += diff_ticks;
+        bar_table.back().num_ticks = mtrk[ievt]->ticks - bar_table.back().start_tick;
 
         while (bar_table.back().num_ticks >= current_bar_len) {
-            uint32_t new_num_ticks = bar_table.back().num_ticks - current_bar_len;
+            const uint32_t new_num_ticks = bar_table.back().num_ticks - current_bar_len;
             bar_table.back().num_ticks = current_bar_len;
             bar_table.emplace_back(bar_table.back().start_tick +
                     bar_table.back().num_ticks, new_num_ticks);
@@ -1243,7 +1238,7 @@ static void midi_to_agb() {
 
             if (bar_table.back().num_ticks > 0) {
                 dbg("warning, time signature not aligning with bars\n");
-                bar_table.emplace_back(bar_table.back().num_ticks +
+                bar_table.emplace_back(bar_table.back().start_tick +
                         bar_table.back().num_ticks, 0);
             }
         }
