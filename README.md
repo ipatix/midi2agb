@@ -1,4 +1,7 @@
 # midi2agb
+
+[![Windows Build (MinGW)](https://github.com/ipatix/midi2agb/actions/workflows/windows-build.yml/badge.svg)](https://github.com/ipatix/midi2agb/actions/workflows/windows-build.yml)
+
 This is a reimplementation of Nintendo's mid2agb tool. It's not related to the original and is intended to fix a bunch of mid2agb's flaws.
 The state of bugs is now "reasonably stable". I did spend quite a bit of time on testing. If you still encounter any problems, please open up an issue or send me an e-mail.
 
