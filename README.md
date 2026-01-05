@@ -65,7 +65,6 @@ The classic mid2agb supports some of these features via special unused MIDI CCs.
 
 ### Binaries / Compiling:
 
-The binaries in the "Releases" section might not be up to date. It's highly recommended to use the latest version from source for the latest bug fixes.
 When compiling from source, you'll also need cppmidi which is a git subrepo. Type "git submodule update --init" when trying to compile and it can't find cppmidi.
 
 ### License
