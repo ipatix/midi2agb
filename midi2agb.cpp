@@ -29,6 +29,7 @@ static void usage() {
     err("-g <vgr>      | voicegroup symbol name (default: voicegroup000)\n");
     err("-p <pri>      | song priority 0..127 (default: 0)\n");
     err("-r <rev>      | song reverb 0..127 (default: 0)\n");
+    err("-x            | double resolution\n");
     err("-n            | apply natural volume scale\n");
     err("-v            | output debug information\n");
     err("--modt <val>  | global modulation type 0..2\n");
@@ -58,6 +59,7 @@ static std::string arg_vgr;
 static uint8_t arg_pri = 0;
 static uint8_t arg_rev = 0;
 static bool arg_natural = false;
+static bool arg_double_res = false;
 
 // conditional global event options
 
@@ -134,6 +136,8 @@ int main(int argc, char *argv[]) {
                 if (rev < 0 || rev > 127)
                     die("-r: parameter %d out of range\n", rev);
                 arg_rev = static_cast<uint8_t>(rev);
+            } else if (!st.compare("-x")) {
+                arg_double_res = true;
             } else if (!st.compare("-n")) {
                 arg_natural = true;
             } else if (!st.compare("-v")) {
@@ -236,7 +240,7 @@ int main(int argc, char *argv[]) {
         mf.load_from_file(arg_input_file);
 
         // 24 clocks per quarter note is pretty much the standard for GBA
-        mf.convert_time_division(24);
+        mf.convert_time_division(arg_double_res ? 48 : 24);
 
         midi_read_infile_arguments();
 
@@ -1213,7 +1217,7 @@ static void midi_to_agb() {
     using namespace cppmidi;
 
     // create bar table
-    uint32_t current_bar_len = 96;
+    uint32_t current_bar_len = arg_double_res ? 192 : 96;
     std::vector<bar> bar_table;
 
     bar_table.emplace_back(0, 0);
@@ -1234,7 +1238,7 @@ static void midi_to_agb() {
         if (typeid(*mtrk[ievt]) == typeid(timesignature_meta_midi_event)) {
             const timesignature_meta_midi_event& tev =
                 static_cast<timesignature_meta_midi_event&>(*mtrk[ievt]);
-            current_bar_len = tev.get_numerator() * 96 / (1 << tev.get_denominator());
+            current_bar_len = tev.get_numerator() * (arg_double_res ? 192 : 96) / (1 << tev.get_denominator());
 
             if (bar_table.back().num_ticks > 0) {
                 dbg("warning, time signature not aligning with bars\n");
@@ -1381,7 +1385,7 @@ static void midi_to_agb() {
             } else if (typeid(ev) == typeid(tempo_meta_midi_event)) {
                 const tempo_meta_midi_event& tev =
                     static_cast<const tempo_meta_midi_event&>(ev);
-                double bpm = tev.get_bpm() / 2.0;
+                double bpm = arg_double_res ? tev.get_bpm() : (tev.get_bpm() / 2.0);
                 bpm = std::clamp(bpm, 0.0, 255.0);
                 bpm = std::round(bpm);
                 atrk.bars.back().events.emplace_back(agb_ev::ty::TEMPO);
@@ -1605,7 +1609,8 @@ static void write_event(std::ofstream& ofs, agb_state& state, const agb_ev& ev, 
         agb_out(ofs, "        .byte   PRIO  , %d\n", ev.prio);
         break;
     case agb_ev::ty::TEMPO:
-        agb_out(ofs, "        .byte   TEMPO , %d/2\n", ev.tempo * 2);
+        agb_out(ofs, "        .byte   TEMPO , %d*%s_tbs/2\n",
+                arg_double_res ? ev.tempo : (ev.tempo * 2), arg_sym.c_str());
         break;
     case agb_ev::ty::KEYSH:
         agb_out(ofs, "        .byte   KEYSH , %s_key%+d\n",
