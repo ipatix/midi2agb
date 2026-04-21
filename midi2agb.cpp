@@ -273,6 +273,8 @@ static const uint8_t MIDI_CC_EX_TUNE = 24;
 static const uint8_t MIDI_CC_EX_LFODL = 26;
 static const uint8_t MIDI_CC_EX_LOOP = 30;
 static const uint8_t MIDI_CC_EX_PRIO = 33;
+static const uint8_t MIDI_CC_EX_MEMACC_ADR = 14;
+static const uint8_t MIDI_CC_EX_MEMACC_DAT = 16;
 
 static const uint8_t EX_LOOP_START = 100;
 static const uint8_t EX_LOOP_END = 101;
@@ -281,7 +283,14 @@ struct agb_ev {
     enum class ty {
         WAIT, LOOP_START, LOOP_END, PRIO, TEMPO, KEYSH, VOICE, VOL, PAN,
         BEND, BENDR, LFOS, LFODL, MOD, MODT, TUNE, XCMD, EOT, TIE, NOTE,
+        MEMACC
     } type;
+
+    enum class memacc_op {
+        MEM_SET, MEM_ADD, MEM_SUB, MEM_MEM_SET, MEM_MEM_ADD, MEM_MEM_SUB,
+        MEM_BEQ, MEM_BNE, MEM_BHI, MEM_BHS, MEM_BLS, MEM_BLO, MEM_MEM_BEQ,
+        MEM_MEM_BNE, MEM_MEM_BHI, MEM_MEM_BHS, MEM_MEM_BLS, MEM_MEM_BLO
+    };
     agb_ev(ty type) : type(type) {}
     union {
         uint32_t wait;
@@ -302,6 +311,7 @@ struct agb_ev {
         struct { uint8_t key; } eot;
         struct { uint8_t key; uint8_t vel; } tie;
         struct { uint8_t len; uint8_t key; uint8_t vel; } note;
+        struct { memacc_op op; uint8_t adr; uint8_t dat; uint16_t lib; } memacc;
     };
     size_t size() const {
         switch (type) {
@@ -325,6 +335,31 @@ struct agb_ev {
         case ty::EOT: return 2;
         case ty::TIE: return 3;
         case ty::NOTE: return 4;
+        case ty::MEMACC: {
+            switch (memacc.op) {
+                case memacc_op::MEM_SET:
+                case memacc_op::MEM_ADD:
+                case memacc_op::MEM_SUB:
+                case memacc_op::MEM_MEM_SET:
+                case memacc_op::MEM_MEM_ADD:
+                case memacc_op::MEM_MEM_SUB:
+                    return 3;
+                case memacc_op::MEM_BEQ:
+                case memacc_op::MEM_BNE:
+                case memacc_op::MEM_BHI:
+                case memacc_op::MEM_BHS:
+                case memacc_op::MEM_BLS:
+                case memacc_op::MEM_BLO:
+                case memacc_op::MEM_MEM_BEQ:
+                case memacc_op::MEM_MEM_BNE:
+                case memacc_op::MEM_MEM_BHI:
+                case memacc_op::MEM_MEM_BHS:
+                case memacc_op::MEM_MEM_BLS:
+                case memacc_op::MEM_MEM_BLO:
+                    return 5;
+                default: throw std::runtime_error("agb_ev::size() error");
+            }
+        }
         default: throw std::runtime_error("agb_ev::size() error");
         }
     }
@@ -352,6 +387,7 @@ struct agb_ev {
         case ty::EOT: return eot.key == rhs.eot.key;
         case ty::TIE: return tie.key == rhs.tie.key && tie.vel == rhs.tie.vel;
         case ty::NOTE: return note.len == rhs.note.len && note.key == rhs.note.key && note.vel == rhs.note.vel;
+        case ty::MEMACC: return memacc.op == rhs.memacc.op && memacc.adr == rhs.memacc.adr && memacc.dat == rhs.memacc.dat && memacc.lib == rhs.memacc.lib;
         default: throw std::runtime_error("agb_ev::operator== error");
         }
     }
@@ -387,6 +423,11 @@ struct agb_ev {
         case ty::NOTE:
             return note.len ^ static_cast<size_t>(note.key << 1) ^
                 static_cast<size_t>(note.vel << 2) ^ 0x41698a8e;
+        case ty::MEMACC:
+                // TODO(maddie): Investigate how the hash is generated.
+                //               Just used an arbitrary 32-bit value.
+                return static_cast<u_int8_t>(memacc.op) ^ static_cast<size_t>(memacc.adr << 1) ^
+                    static_cast<size_t>(memacc.dat << 2) ^ static_cast<size_t>(memacc.lib << 3) ^ 0xfd83b39c;
         default:
             throw std::runtime_error("hash error");
         }
@@ -921,6 +962,7 @@ static void midi_apply_loop_and_state_reset() {
         uint8_t modt = 0;
         uint8_t tune = 0x40;
         uint8_t prio = 0;
+        uint8_t memacc_adr = 0;
         // FIXME add memacc and pseudo echo for completeness
         // omitted for now because nobody would be using it
 
@@ -974,6 +1016,10 @@ static void midi_apply_loop_and_state_reset() {
                     if (ev.ticks <= loop_start_tick)
                         prio = cev.get_value();
                     break;
+                case MIDI_CC_EX_MEMACC_ADR:
+                    if (ev.ticks <= loop_start_tick)
+                        memacc_adr = cev.get_value();
+                    break;
                 case MIDI_CC_EX_LOOP:
                     if (cev.get_value() == EX_LOOP_START) {
                         // loop start
@@ -1012,6 +1058,9 @@ static void midi_apply_loop_and_state_reset() {
                         ptrs.emplace_back(new controller_message_midi_event(
                                     ev.ticks, cev.channel(),
                                     MIDI_CC_EX_PRIO, prio));
+                        ptrs.emplace_back(new controller_message_midi_event(
+                                    ev.ticks, cev.channel(),
+                                    MIDI_CC_EX_MEMACC_ADR, memacc_adr));
                         mtrk.midi_events.insert(mtrk.midi_events.begin() +
                                 static_cast<long>(itrk),
                                 std::make_move_iterator(ptrs.begin()),
@@ -1049,6 +1098,7 @@ static void midi_remove_redundant_events() {
         uint8_t prio = 0;
         uint8_t lfodl = 0;
         uint8_t lfos = 22;
+        uint8_t memacc_adr = 0;
 
         size_t dummy;
 
@@ -1187,6 +1237,10 @@ static void midi_remove_redundant_events() {
                         prio = cev.get_value();
                     }
                     break;
+                case MIDI_CC_EX_MEMACC_ADR:
+                case MIDI_CC_EX_MEMACC_DAT:
+                    // redundant allowed
+                    break;
                 default:
                     dbg("Removing MIDI event of type: %s\n", typeid(ev).name());
                     mtrk[ievt] = std::make_unique<dummy_midi_event>(mtrk[ievt]->ticks);
@@ -1291,6 +1345,7 @@ static void midi_to_agb() {
 
         uint32_t current_bar = 0;
         uint32_t tick_counter = 0;
+        uint8_t memacc_adr = 0;
         for (size_t ievt = 0; ievt < mtrk.midi_events.size(); ievt++) {
             const midi_event& ev = *mtrk[ievt];
             // skip all dummy events EXCEPT the very last one
@@ -1380,6 +1435,15 @@ static void midi_to_agb() {
                     atrk.bars.back().events.back().tune =
                         static_cast<int8_t>(cev.get_value() - 64);
                     break;
+                case MIDI_CC_EX_MEMACC_ADR:
+                    memacc_adr = cev.get_value();
+                    break;
+                case MIDI_CC_EX_MEMACC_DAT:
+                    atrk.bars.back().events.emplace_back(agb_ev::ty::MEMACC);
+                    atrk.bars.back().events.back().memacc.op = agb_ev::memacc_op::MEM_SET;
+                    atrk.bars.back().events.back().memacc.adr = memacc_adr;
+                    atrk.bars.back().events.back().memacc.dat = cev.get_value();
+                    break;                    
                 default: ;
                 }
             } else if (typeid(ev) == typeid(tempo_meta_midi_event)) {
@@ -1548,7 +1612,7 @@ struct agb_state {
 
     enum class cmd {
         VOICE, VOL, PAN, BEND, BENDR, LFOS, LFODL, MOD, MODT, TUNE,
-        XCMD, EOT, TIE, NOTE, INVALID
+        XCMD, EOT, TIE, NOTE, MEMACC, INVALID
     } cmd_state;
     uint8_t note_key, note_vel, note_len;
     bool may_repeat;
@@ -1869,6 +1933,18 @@ static void write_event(std::ofstream& ofs, agb_state& state, const agb_ev& ev, 
             state.cmd_state = agb_state::cmd::NOTE;
         }
         break;
+    case agb_ev::ty::MEMACC:
+        switch (ev.memacc.op) {
+            case agb_ev::memacc_op::MEM_SET:
+                agb_out(ofs, "        .byte           MEMACC, mem_set, 0x%02X, %d\n",
+                        ev.memacc.adr, ev.memacc.dat);
+            break;
+            default:
+                // unimplemented
+            break;
+        }
+        state.cmd_state = agb_state::cmd::MEMACC;
+        state.may_repeat = false;
     }
 }
 
