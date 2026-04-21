@@ -2019,6 +2019,13 @@ outer_continue:
                 arg_sym.c_str());
     }
     agb_out(fout, "        .equ    %s_key, 0\n\n", arg_sym.c_str());
+    if (arg_double_res) {
+        agb_out(fout, "        .equ    %s_tbs, 2\n",
+                arg_sym.c_str());
+    } else {
+        agb_out(fout, "        .equ    %s_tbs, 1\n",
+                arg_sym.c_str());
+    }
     agb_out(fout, "        .section .rodata\n");
     agb_out(fout, "        .global %s\n", arg_sym.c_str());
     agb_out(fout, "        .align  2\n\n");
