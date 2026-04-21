@@ -31,6 +31,7 @@ Option | Parameter | Default | Description
 -g | voicegroup | voicegroup000 | the default tone color set (aka voicegroup or soundbank)
 -p | priority | 0 | priority of song for the music engine (0..127)
 -r | reverb | 0 | enables song reverb if > 0 (0..127)
+-x | *-* | disabled | enables double ppq resolution (by doubling tempo)
 -n | *-* | disabled | enables natural volume scale to approximate MIDI like loudness
 -v | *-* | disabled | enables debug output
 --modt | value | 0 | 0 = pitch modulation, 1 = volume modulation, 2 = panpot modulation
