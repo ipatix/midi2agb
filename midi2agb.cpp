@@ -3,6 +3,7 @@
 #include <chrono>
 #include <fstream>
 #include <unordered_map>
+#include <optional>
 
 #include <cstdio>
 #include <cstdlib>
@@ -29,6 +30,7 @@ static void usage() {
     err("-g <vgr>      | voicegroup symbol name (default: voicegroup000)\n");
     err("-p <pri>      | song priority 0..127 (default: 0)\n");
     err("-r <rev>      | song reverb 0..127 (default: 0)\n");
+    err("-x            | double resolution\n");
     err("-n            | apply natural volume scale\n");
     err("-v            | output debug information\n");
     err("--modt <val>  | global modulation type 0..2\n");
@@ -58,6 +60,7 @@ static std::string arg_vgr;
 static uint8_t arg_pri = 0;
 static uint8_t arg_rev = 0;
 static bool arg_natural = false;
+static bool arg_double_res = false;
 
 // conditional global event options
 
@@ -134,6 +137,8 @@ int main(int argc, char *argv[]) {
                 if (rev < 0 || rev > 127)
                     die("-r: parameter %d out of range\n", rev);
                 arg_rev = static_cast<uint8_t>(rev);
+            } else if (!st.compare("-x")) {
+                arg_double_res = true;
             } else if (!st.compare("-n")) {
                 arg_natural = true;
             } else if (!st.compare("-v")) {
@@ -236,7 +241,7 @@ int main(int argc, char *argv[]) {
         mf.load_from_file(arg_input_file);
 
         // 24 clocks per quarter note is pretty much the standard for GBA
-        mf.convert_time_division(24);
+        mf.convert_time_division(arg_double_res ? 48 : 24);
 
         midi_read_infile_arguments();
 
@@ -269,15 +274,30 @@ static const uint8_t MIDI_CC_EX_TUNE = 24;
 static const uint8_t MIDI_CC_EX_LFODL = 26;
 static const uint8_t MIDI_CC_EX_LOOP = 30;
 static const uint8_t MIDI_CC_EX_PRIO = 33;
+static const uint8_t MIDI_CC_EX_MEMACC_ADR = 14;
+static const uint8_t MIDI_CC_EX_MEMACC_DAT = 16;
 
 static const uint8_t EX_LOOP_START = 100;
 static const uint8_t EX_LOOP_END = 101;
+
+const char *memacc_op_src_str[18] = {
+    "mem_set", "mem_add", "mem_sub", "mem_mem_set", "mem_mem_add", "mem_mem_sub",
+    "mem_beq", "mem_bne", "mem_bhi", "mem_bhs", "mem_bls", "mem_blo", "mem_mem_beq",
+    "mem_mem_bne", "mem_mem_bhi", "mem_mem_bhs", "mem_mem_bls", "mem_mem_blo"
+};
 
 struct agb_ev {
     enum class ty {
         WAIT, LOOP_START, LOOP_END, PRIO, TEMPO, KEYSH, VOICE, VOL, PAN,
         BEND, BENDR, LFOS, LFODL, MOD, MODT, TUNE, XCMD, EOT, TIE, NOTE,
+        MEMACC
     } type;
+
+    enum class memacc_op {
+        MEM_SET, MEM_ADD, MEM_SUB, MEM_MEM_SET, MEM_MEM_ADD, MEM_MEM_SUB,
+        MEM_BEQ, MEM_BNE, MEM_BHI, MEM_BHS, MEM_BLS, MEM_BLO, MEM_MEM_BEQ,
+        MEM_MEM_BNE, MEM_MEM_BHI, MEM_MEM_BHS, MEM_MEM_BLS, MEM_MEM_BLO
+    };
     agb_ev(ty type) : type(type) {}
     union {
         uint32_t wait;
@@ -298,6 +318,7 @@ struct agb_ev {
         struct { uint8_t key; } eot;
         struct { uint8_t key; uint8_t vel; } tie;
         struct { uint8_t len; uint8_t key; uint8_t vel; } note;
+        struct { memacc_op op; uint8_t adr; uint8_t dat; uint16_t lib; } memacc;
     };
     size_t size() const {
         switch (type) {
@@ -321,6 +342,31 @@ struct agb_ev {
         case ty::EOT: return 2;
         case ty::TIE: return 3;
         case ty::NOTE: return 4;
+        case ty::MEMACC: {
+            switch (memacc.op) {
+                case memacc_op::MEM_SET:
+                case memacc_op::MEM_ADD:
+                case memacc_op::MEM_SUB:
+                case memacc_op::MEM_MEM_SET:
+                case memacc_op::MEM_MEM_ADD:
+                case memacc_op::MEM_MEM_SUB:
+                    return 3;
+                case memacc_op::MEM_BEQ:
+                case memacc_op::MEM_BNE:
+                case memacc_op::MEM_BHI:
+                case memacc_op::MEM_BHS:
+                case memacc_op::MEM_BLS:
+                case memacc_op::MEM_BLO:
+                case memacc_op::MEM_MEM_BEQ:
+                case memacc_op::MEM_MEM_BNE:
+                case memacc_op::MEM_MEM_BHI:
+                case memacc_op::MEM_MEM_BHS:
+                case memacc_op::MEM_MEM_BLS:
+                case memacc_op::MEM_MEM_BLO:
+                    return 5;
+                default: throw std::runtime_error("agb_ev::size() error");
+            }
+        }
         default: throw std::runtime_error("agb_ev::size() error");
         }
     }
@@ -348,6 +394,7 @@ struct agb_ev {
         case ty::EOT: return eot.key == rhs.eot.key;
         case ty::TIE: return tie.key == rhs.tie.key && tie.vel == rhs.tie.vel;
         case ty::NOTE: return note.len == rhs.note.len && note.key == rhs.note.key && note.vel == rhs.note.vel;
+        case ty::MEMACC: return memacc.op == rhs.memacc.op && memacc.adr == rhs.memacc.adr && memacc.dat == rhs.memacc.dat && memacc.lib == rhs.memacc.lib;
         default: throw std::runtime_error("agb_ev::operator== error");
         }
     }
@@ -383,6 +430,9 @@ struct agb_ev {
         case ty::NOTE:
             return note.len ^ static_cast<size_t>(note.key << 1) ^
                 static_cast<size_t>(note.vel << 2) ^ 0x41698a8e;
+        case ty::MEMACC:
+            return static_cast<u_int8_t>(memacc.op) ^ static_cast<size_t>(memacc.adr << 1) ^
+                static_cast<size_t>(memacc.dat << 2) ^ static_cast<size_t>(memacc.lib << 3) ^ 0xfd83b39c;
         default:
             throw std::runtime_error("hash error");
         }
@@ -495,6 +545,102 @@ const uint8_t MIDI_NOTE_PARSE_INIT = 0x0;
 const uint8_t MIDI_NOTE_PARSE_SHORT = 0x1;
 const uint8_t MIDI_NOTE_PARSE_TIE = 0x2;
 
+static std::optional<agb_ev> scan_memacc_marker_data(const std::string& text) {
+    if (strncmp(text.c_str(), "memacc[", 7)) {
+        return {};
+    }
+    size_t pos = 7;
+    size_t limit = text.size();
+    size_t len = 0;
+
+    int addr = 0;
+    try {
+        addr = std::stoi(text.substr(pos), &len);
+    } catch (...) {
+        die("scan \"%s\" invalid address\n", text.c_str());
+    }
+    
+    pos += len;
+    
+    if (pos >= limit || text[pos] != ']') {
+        die("scan \"%s\" missing closing bracket\n", text.c_str());
+    }
+    
+    if (addr < 0 || addr > 255) {
+        die("scan \"%s\" address out of range\n", text.c_str());
+    }
+    
+    pos++;
+
+    if (pos >= limit) {
+        die("scan \"%s\" missing operator\n", text.c_str());
+    }
+    
+    agb_ev::memacc_op op{};
+    char c = text[pos];
+    pos++;
+    if (c == '=') {
+        op = agb_ev::memacc_op::MEM_SET;
+    } else if (c == '+' || c == '-') {
+        if (pos >= limit || text[pos] != '=') {
+            die("scan \"%s\" invalid operator\n", text.c_str());
+        }
+        pos++;
+        if (c == '+') {
+            op = agb_ev::memacc_op::MEM_ADD;
+        } else {
+            op = agb_ev::memacc_op::MEM_SUB;
+        }
+    }
+    
+    if (pos >= limit) {
+        die("scan \"%s\" missing value\n", text.c_str());
+    }
+    
+    bool indirect = false;
+
+    if (text[pos] == '[') {
+        pos++;
+        indirect = true;
+        switch (op) {
+        case agb_ev::memacc_op::MEM_SET:
+            op = agb_ev::memacc_op::MEM_MEM_SET;
+            break;
+        case agb_ev::memacc_op::MEM_ADD:
+            op = agb_ev::memacc_op::MEM_MEM_ADD;
+            break;
+        case agb_ev::memacc_op::MEM_SUB:
+            op = agb_ev::memacc_op::MEM_MEM_SUB;
+            break;
+        default:
+            break;
+        }
+    }
+    
+    int val = 0;
+    try {
+        val = std::stoi(text.substr(pos), &len);
+    } catch (...) {
+        die("scan \"%s\" invalid %s\n", text.c_str(), indirect ? "address" : "value");
+    }
+
+    if (val < 0 || val > 255) {
+        die("scan \"%s\" %s out of range\n", text.c_str(), indirect ? "address" : "value");
+    }
+    
+    pos += len;
+    
+    if (indirect && (pos >= limit || text[pos] != ']')) {
+        die("scan \"%s\" missing closing bracket\n", text.c_str());
+    }
+    
+    agb_ev ev(agb_ev::ty::MEMACC);
+    ev.memacc.op = op;
+    ev.memacc.adr = addr;
+    ev.memacc.dat = val;
+    return ev;
+}
+
 static void midi_read_infile_arguments() {
     using namespace cppmidi;
     /*
@@ -509,6 +655,7 @@ static void midi_read_infile_arguments() {
      * - "lfodl_global=%d": ^ globally
      * - "modscale_global=%f": scales modulation by factor %f
      * - "modt_global=%d": set's modulation type for whole song
+     * - memacc markers are parsed in midi_to_agb()
      */
     bool found_start = false, found_end = false;
     uint32_t loop_start = 0, loop_end = 0;
@@ -917,7 +1064,7 @@ static void midi_apply_loop_and_state_reset() {
         uint8_t modt = 0;
         uint8_t tune = 0x40;
         uint8_t prio = 0;
-        // FIXME add memacc and pseudo echo for completeness
+        // FIXME add pseudo echo for completeness
         // omitted for now because nobody would be using it
 
         uint32_t loop_start_tick = 0xFFFFFFFF;
@@ -1183,11 +1330,21 @@ static void midi_remove_redundant_events() {
                         prio = cev.get_value();
                     }
                     break;
+                case MIDI_CC_EX_MEMACC_ADR:
+                case MIDI_CC_EX_MEMACC_DAT:
+                    // redundant allowed
+                    break;
                 default:
                     dbg("Removing MIDI event of type: %s\n", typeid(ev).name());
                     mtrk[ievt] = std::make_unique<dummy_midi_event>(mtrk[ievt]->ticks);
                     break;
                 } // end controller switch 
+            } else if (typeid(ev) == typeid(marker_meta_midi_event)) {
+                // ignore
+            } else if (typeid(ev) == typeid(text_meta_midi_event)) {
+                // ignore
+            } else if (typeid(ev) == typeid(cuepoint_meta_midi_event)) {
+                // ignore
             } else if (typeid(ev) == typeid(timesignature_meta_midi_event)) {
                 // ignore
             } else if (typeid(ev) == typeid(noteon_message_midi_event)) {
@@ -1210,10 +1367,22 @@ struct bar {
 };
 
 static void midi_to_agb() {
+    
+    /*
+     * Special Events (use Marker/Text/Cuepoint):
+     * - "memacc[%d]=%d": assign immediate value to memory address
+     * - "memacc[%d]+=%d": add immediate value to memory address
+     * - "memacc[%d]-=%d": subtract immediate value from memory address
+     * - "memacc[%d]=[%d]": assign indirect value to memory address
+     * - "memacc[%d]+=[%d]": add indirect value to memory address
+     * - "memacc[%d]-=[%d]": subtract indirect value from memory address
+     * - all other markers parsed in midi_read_infile_arguments()
+     */
+    
     using namespace cppmidi;
 
     // create bar table
-    uint32_t current_bar_len = 96;
+    uint32_t current_bar_len = arg_double_res ? 192 : 96;
     std::vector<bar> bar_table;
 
     bar_table.emplace_back(0, 0);
@@ -1234,7 +1403,7 @@ static void midi_to_agb() {
         if (typeid(*mtrk[ievt]) == typeid(timesignature_meta_midi_event)) {
             const timesignature_meta_midi_event& tev =
                 static_cast<timesignature_meta_midi_event&>(*mtrk[ievt]);
-            current_bar_len = tev.get_numerator() * 96 / (1 << tev.get_denominator());
+            current_bar_len = tev.get_numerator() * (arg_double_res ? 192 : 96) / (1 << tev.get_denominator());
 
             if (bar_table.back().num_ticks > 0) {
                 dbg("warning, time signature not aligning with bars\n");
@@ -1287,6 +1456,7 @@ static void midi_to_agb() {
 
         uint32_t current_bar = 0;
         uint32_t tick_counter = 0;
+        uint8_t memacc_adr = 0;
         for (size_t ievt = 0; ievt < mtrk.midi_events.size(); ievt++) {
             const midi_event& ev = *mtrk[ievt];
             // skip all dummy events EXCEPT the very last one
@@ -1327,7 +1497,33 @@ static void midi_to_agb() {
                 }
             }
 
-            if (typeid(ev) == typeid(controller_message_midi_event)) {
+            std::string ev_text;
+            bool is_text_event = false;
+            if (typeid(ev) == typeid(marker_meta_midi_event)) {
+                // marker
+                const marker_meta_midi_event& mev = 
+                    static_cast<const marker_meta_midi_event&>(ev);
+                ev_text = mev.get_text();
+                is_text_event = true;
+            } else if (typeid(ev) == typeid(text_meta_midi_event)) {
+                // text
+                const text_meta_midi_event& tev =
+                    static_cast<const text_meta_midi_event&>(ev);
+                ev_text = tev.get_text();
+                is_text_event = true;
+            } else if (typeid(ev) == typeid(cuepoint_meta_midi_event)) {
+                // cuepoint
+                const cuepoint_meta_midi_event& cev =
+                    static_cast<const cuepoint_meta_midi_event&>(ev);
+                ev_text = cev.get_text();
+                is_text_event = true;
+            }
+            
+            if (is_text_event) {
+                if (auto ev = scan_memacc_marker_data(ev_text)) {
+                    atrk.bars.back().events.push_back(*ev);
+                }
+            } else if (typeid(ev) == typeid(controller_message_midi_event)) {
                 const controller_message_midi_event& cev =
                     static_cast<const controller_message_midi_event&>(ev);
                 switch (cev.get_controller()) {
@@ -1376,12 +1572,21 @@ static void midi_to_agb() {
                     atrk.bars.back().events.back().tune =
                         static_cast<int8_t>(cev.get_value() - 64);
                     break;
+                case MIDI_CC_EX_MEMACC_ADR:
+                    memacc_adr = cev.get_value();
+                    break;
+                case MIDI_CC_EX_MEMACC_DAT:
+                    atrk.bars.back().events.emplace_back(agb_ev::ty::MEMACC);
+                    atrk.bars.back().events.back().memacc.op = agb_ev::memacc_op::MEM_SET;
+                    atrk.bars.back().events.back().memacc.adr = memacc_adr;
+                    atrk.bars.back().events.back().memacc.dat = cev.get_value();
+                    break;                    
                 default: ;
                 }
             } else if (typeid(ev) == typeid(tempo_meta_midi_event)) {
                 const tempo_meta_midi_event& tev =
                     static_cast<const tempo_meta_midi_event&>(ev);
-                double bpm = tev.get_bpm() / 2.0;
+                double bpm = arg_double_res ? tev.get_bpm() : (tev.get_bpm() / 2.0);
                 bpm = std::clamp(bpm, 0.0, 255.0);
                 bpm = std::round(bpm);
                 atrk.bars.back().events.emplace_back(agb_ev::ty::TEMPO);
@@ -1544,7 +1749,7 @@ struct agb_state {
 
     enum class cmd {
         VOICE, VOL, PAN, BEND, BENDR, LFOS, LFODL, MOD, MODT, TUNE,
-        XCMD, EOT, TIE, NOTE, INVALID
+        XCMD, EOT, TIE, NOTE, MEMACC, INVALID
     } cmd_state;
     uint8_t note_key, note_vel, note_len;
     bool may_repeat;
@@ -1605,7 +1810,8 @@ static void write_event(std::ofstream& ofs, agb_state& state, const agb_ev& ev, 
         agb_out(ofs, "        .byte   PRIO  , %d\n", ev.prio);
         break;
     case agb_ev::ty::TEMPO:
-        agb_out(ofs, "        .byte   TEMPO , %d/2\n", ev.tempo * 2);
+        agb_out(ofs, "        .byte   TEMPO , %d*%s_tbs/2\n",
+                arg_double_res ? ev.tempo : (ev.tempo * 2), arg_sym.c_str());
         break;
     case agb_ev::ty::KEYSH:
         agb_out(ofs, "        .byte   KEYSH , %s_key%+d\n",
@@ -1864,6 +2070,25 @@ static void write_event(std::ofstream& ofs, agb_state& state, const agb_ev& ev, 
             state.cmd_state = agb_state::cmd::NOTE;
         }
         break;
+    case agb_ev::ty::MEMACC:
+        switch (ev.memacc.op) {
+        case agb_ev::memacc_op::MEM_SET:
+        case agb_ev::memacc_op::MEM_ADD:
+        case agb_ev::memacc_op::MEM_SUB:
+        case agb_ev::memacc_op::MEM_MEM_SET:
+        case agb_ev::memacc_op::MEM_MEM_ADD:
+        case agb_ev::memacc_op::MEM_MEM_SUB:
+            agb_out(ofs, "        .byte           MEMACC, %s, 0x%02X, %d\n",
+                memacc_op_src_str[static_cast<size_t>(ev.memacc.op)],
+                ev.memacc.adr, ev.memacc.dat);
+            break;
+        default:
+            // unimplemented
+            break;
+        }
+        state.cmd_state = agb_state::cmd::MEMACC;
+        state.may_repeat = false;
+        break;
     }
 }
 
@@ -1938,6 +2163,13 @@ outer_continue:
                 arg_sym.c_str());
     }
     agb_out(fout, "        .equ    %s_key, 0\n\n", arg_sym.c_str());
+    if (arg_double_res) {
+        agb_out(fout, "        .equ    %s_tbs, 2\n",
+                arg_sym.c_str());
+    } else {
+        agb_out(fout, "        .equ    %s_tbs, 1\n",
+                arg_sym.c_str());
+    }
     agb_out(fout, "        .section .rodata\n");
     agb_out(fout, "        .global %s\n", arg_sym.c_str());
     agb_out(fout, "        .align  2\n\n");
