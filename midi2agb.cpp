@@ -1064,8 +1064,7 @@ static void midi_apply_loop_and_state_reset() {
         uint8_t modt = 0;
         uint8_t tune = 0x40;
         uint8_t prio = 0;
-        uint8_t memacc_adr = 0;
-        // FIXME add memacc and pseudo echo for completeness
+        // FIXME add pseudo echo for completeness
         // omitted for now because nobody would be using it
 
         uint32_t loop_start_tick = 0xFFFFFFFF;
@@ -1118,10 +1117,6 @@ static void midi_apply_loop_and_state_reset() {
                     if (ev.ticks <= loop_start_tick)
                         prio = cev.get_value();
                     break;
-                case MIDI_CC_EX_MEMACC_ADR:
-                    if (ev.ticks <= loop_start_tick)
-                        memacc_adr = cev.get_value();
-                    break;
                 case MIDI_CC_EX_LOOP:
                     if (cev.get_value() == EX_LOOP_START) {
                         // loop start
@@ -1160,9 +1155,6 @@ static void midi_apply_loop_and_state_reset() {
                         ptrs.emplace_back(new controller_message_midi_event(
                                     ev.ticks, cev.channel(),
                                     MIDI_CC_EX_PRIO, prio));
-                        ptrs.emplace_back(new controller_message_midi_event(
-                                    ev.ticks, cev.channel(),
-                                    MIDI_CC_EX_MEMACC_ADR, memacc_adr));
                         mtrk.midi_events.insert(mtrk.midi_events.begin() +
                                 static_cast<long>(itrk),
                                 std::make_move_iterator(ptrs.begin()),
