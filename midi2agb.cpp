@@ -3,6 +3,7 @@
 #include <chrono>
 #include <fstream>
 #include <unordered_map>
+#include <optional>
 
 #include <cstdio>
 #include <cstdlib>
@@ -279,6 +280,12 @@ static const uint8_t MIDI_CC_EX_MEMACC_DAT = 16;
 static const uint8_t EX_LOOP_START = 100;
 static const uint8_t EX_LOOP_END = 101;
 
+const char *memacc_op_src_str[18] = {
+    "mem_set", "mem_add", "mem_sub", "mem_mem_set", "mem_mem_add", "mem_mem_sub",
+    "mem_beq", "mem_bne", "mem_bhi", "mem_bhs", "mem_bls", "mem_blo", "mem_mem_beq",
+    "mem_mem_bne", "mem_mem_bhi", "mem_mem_bhs", "mem_mem_bls", "mem_mem_blo"
+};
+
 struct agb_ev {
     enum class ty {
         WAIT, LOOP_START, LOOP_END, PRIO, TEMPO, KEYSH, VOICE, VOL, PAN,
@@ -424,10 +431,8 @@ struct agb_ev {
             return note.len ^ static_cast<size_t>(note.key << 1) ^
                 static_cast<size_t>(note.vel << 2) ^ 0x41698a8e;
         case ty::MEMACC:
-                // TODO(maddie): Investigate how the hash is generated.
-                //               Just used an arbitrary 32-bit value.
-                return static_cast<u_int8_t>(memacc.op) ^ static_cast<size_t>(memacc.adr << 1) ^
-                    static_cast<size_t>(memacc.dat << 2) ^ static_cast<size_t>(memacc.lib << 3) ^ 0xfd83b39c;
+            return static_cast<u_int8_t>(memacc.op) ^ static_cast<size_t>(memacc.adr << 1) ^
+                static_cast<size_t>(memacc.dat << 2) ^ static_cast<size_t>(memacc.lib << 3) ^ 0xfd83b39c;
         default:
             throw std::runtime_error("hash error");
         }
@@ -540,6 +545,102 @@ const uint8_t MIDI_NOTE_PARSE_INIT = 0x0;
 const uint8_t MIDI_NOTE_PARSE_SHORT = 0x1;
 const uint8_t MIDI_NOTE_PARSE_TIE = 0x2;
 
+static std::optional<agb_ev> scan_memacc_marker_data(const std::string& text) {
+    if (strncmp(text.c_str(), "memacc[", 7)) {
+        return {};
+    }
+    size_t pos = 7;
+    size_t limit = text.size();
+    size_t len = 0;
+
+    int addr = 0;
+    try {
+        addr = std::stoi(text.substr(pos), &len);
+    } catch (...) {
+        die("scan \"%s\" invalid address\n", text.c_str());
+    }
+    
+    pos += len;
+    
+    if (pos >= limit || text[pos] != ']') {
+        die("scan \"%s\" missing closing bracket\n", text.c_str());
+    }
+    
+    if (addr < 0 || addr > 255) {
+        die("scan \"%s\" address out of range\n", text.c_str());
+    }
+    
+    pos++;
+
+    if (pos >= limit) {
+        die("scan \"%s\" missing operator\n", text.c_str());
+    }
+    
+    agb_ev::memacc_op op{};
+    char c = text[pos];
+    pos++;
+    if (c == '=') {
+        op = agb_ev::memacc_op::MEM_SET;
+    } else if (c == '+' || c == '-') {
+        if (pos >= limit || text[pos] != '=') {
+            die("scan \"%s\" invalid operator\n", text.c_str());
+        }
+        pos++;
+        if (c == '+') {
+            op = agb_ev::memacc_op::MEM_ADD;
+        } else {
+            op = agb_ev::memacc_op::MEM_SUB;
+        }
+    }
+    
+    if (pos >= limit) {
+        die("scan \"%s\" missing value\n", text.c_str());
+    }
+    
+    bool indirect = false;
+
+    if (text[pos] == '[') {
+        pos++;
+        indirect = true;
+        switch (op) {
+        case agb_ev::memacc_op::MEM_SET:
+            op = agb_ev::memacc_op::MEM_MEM_SET;
+            break;
+        case agb_ev::memacc_op::MEM_ADD:
+            op = agb_ev::memacc_op::MEM_MEM_ADD;
+            break;
+        case agb_ev::memacc_op::MEM_SUB:
+            op = agb_ev::memacc_op::MEM_MEM_SUB;
+            break;
+        default:
+            break;
+        }
+    }
+    
+    int val = 0;
+    try {
+        val = std::stoi(text.substr(pos), &len);
+    } catch (...) {
+        die("scan \"%s\" invalid %s\n", text.c_str(), indirect ? "address" : "value");
+    }
+
+    if (val < 0 || val > 255) {
+        die("scan \"%s\" %s out of range\n", text.c_str(), indirect ? "address" : "value");
+    }
+    
+    pos += len;
+    
+    if (indirect && (pos >= limit || text[pos] != ']')) {
+        die("scan \"%s\" missing closing bracket\n", text.c_str());
+    }
+    
+    agb_ev ev(agb_ev::ty::MEMACC);
+    ev.memacc.op = op;
+    ev.memacc.adr = addr;
+    ev.memacc.dat = val;
+    return ev;
+}
+
 static void midi_read_infile_arguments() {
     using namespace cppmidi;
     /*
@@ -554,6 +655,7 @@ static void midi_read_infile_arguments() {
      * - "lfodl_global=%d": ^ globally
      * - "modscale_global=%f": scales modulation by factor %f
      * - "modt_global=%d": set's modulation type for whole song
+     * - memacc markers are parsed in midi_to_agb()
      */
     bool found_start = false, found_end = false;
     uint32_t loop_start = 0, loop_end = 0;
@@ -1098,7 +1200,6 @@ static void midi_remove_redundant_events() {
         uint8_t prio = 0;
         uint8_t lfodl = 0;
         uint8_t lfos = 22;
-        uint8_t memacc_adr = 0;
 
         size_t dummy;
 
@@ -1246,6 +1347,12 @@ static void midi_remove_redundant_events() {
                     mtrk[ievt] = std::make_unique<dummy_midi_event>(mtrk[ievt]->ticks);
                     break;
                 } // end controller switch 
+            } else if (typeid(ev) == typeid(marker_meta_midi_event)) {
+                // ignore
+            } else if (typeid(ev) == typeid(text_meta_midi_event)) {
+                // ignore
+            } else if (typeid(ev) == typeid(cuepoint_meta_midi_event)) {
+                // ignore
             } else if (typeid(ev) == typeid(timesignature_meta_midi_event)) {
                 // ignore
             } else if (typeid(ev) == typeid(noteon_message_midi_event)) {
@@ -1268,6 +1375,18 @@ struct bar {
 };
 
 static void midi_to_agb() {
+    
+    /*
+     * Special Events (use Marker/Text/Cuepoint):
+     * - "memacc[%d]=%d": assign immediate value to memory address
+     * - "memacc[%d]+=%d": add immediate value to memory address
+     * - "memacc[%d]-=%d": subtract immediate value from memory address
+     * - "memacc[%d]=[%d]": assign indirect value to memory address
+     * - "memacc[%d]+=[%d]": add indirect value to memory address
+     * - "memacc[%d]-=[%d]": subtract indirect value from memory address
+     * - all other markers parsed in midi_read_infile_arguments()
+     */
+    
     using namespace cppmidi;
 
     // create bar table
@@ -1386,7 +1505,33 @@ static void midi_to_agb() {
                 }
             }
 
-            if (typeid(ev) == typeid(controller_message_midi_event)) {
+            std::string ev_text;
+            bool is_text_event = false;
+            if (typeid(ev) == typeid(marker_meta_midi_event)) {
+                // marker
+                const marker_meta_midi_event& mev = 
+                    static_cast<const marker_meta_midi_event&>(ev);
+                ev_text = mev.get_text();
+                is_text_event = true;
+            } else if (typeid(ev) == typeid(text_meta_midi_event)) {
+                // text
+                const text_meta_midi_event& tev =
+                    static_cast<const text_meta_midi_event&>(ev);
+                ev_text = tev.get_text();
+                is_text_event = true;
+            } else if (typeid(ev) == typeid(cuepoint_meta_midi_event)) {
+                // cuepoint
+                const cuepoint_meta_midi_event& cev =
+                    static_cast<const cuepoint_meta_midi_event&>(ev);
+                ev_text = cev.get_text();
+                is_text_event = true;
+            }
+            
+            if (is_text_event) {
+                if (auto ev = scan_memacc_marker_data(ev_text)) {
+                    atrk.bars.back().events.push_back(*ev);
+                }
+            } else if (typeid(ev) == typeid(controller_message_midi_event)) {
                 const controller_message_midi_event& cev =
                     static_cast<const controller_message_midi_event&>(ev);
                 switch (cev.get_controller()) {
@@ -1935,16 +2080,23 @@ static void write_event(std::ofstream& ofs, agb_state& state, const agb_ev& ev, 
         break;
     case agb_ev::ty::MEMACC:
         switch (ev.memacc.op) {
-            case agb_ev::memacc_op::MEM_SET:
-                agb_out(ofs, "        .byte           MEMACC, mem_set, 0x%02X, %d\n",
-                        ev.memacc.adr, ev.memacc.dat);
+        case agb_ev::memacc_op::MEM_SET:
+        case agb_ev::memacc_op::MEM_ADD:
+        case agb_ev::memacc_op::MEM_SUB:
+        case agb_ev::memacc_op::MEM_MEM_SET:
+        case agb_ev::memacc_op::MEM_MEM_ADD:
+        case agb_ev::memacc_op::MEM_MEM_SUB:
+            agb_out(ofs, "        .byte           MEMACC, %s, 0x%02X, %d\n",
+                memacc_op_src_str[static_cast<size_t>(ev.memacc.op)],
+                ev.memacc.adr, ev.memacc.dat);
             break;
-            default:
-                // unimplemented
+        default:
+            // unimplemented
             break;
         }
         state.cmd_state = agb_state::cmd::MEMACC;
         state.may_repeat = false;
+        break;
     }
 }
 

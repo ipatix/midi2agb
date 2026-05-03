@@ -16,7 +16,7 @@ The state of bugs is now "reasonably stable". I did spend quite a bit of time on
 ### TODO:
 
 * The Pattern Detection currently works, but patterns aren't always used because the byte count comparison doesn't take the byte reduction by running state into account. The worst case of this is a song which is a couple of bytes larger than it should be.
-* Support weird AGB events like "memacc" or "xcmd".
+* Support weird AGB events like "xcmd" or branching "memacc".
 
 ### Usage:
 
@@ -61,6 +61,12 @@ Marker, Text, or Cuepoint | `vgr=?` | override command line `-g`
 Marker, Text, or Cuepoint | `pri=?` | override command line `-p`
 Marker, Text, or Cuepoint | `rev=?` | override command line `-r`
 Marker, Text, or Cuepoint | `nat=?` | override command line `-n` (1 = enabled, 0 = disabled)
+Marker, Text, or Cuepoint | `memacc[a]=?` | assigns value at address `a` to `?` (e.g., `memacc[0]=2` sets value at address `0` to `2`)
+Marker, Text, or Cuepoint | `memacc[a]+=?` | adds `?` to value at address `a` (e.g., `memacc[1]+=1` adds `1` to value at address `1`)
+Marker, Text, or Cuepoint | `memacc[a]-=?` | subtracts `?` from value at address `a` (e.g., `memacc[2]-=5` subtracts `5` from value at address `2`)
+Marker, Text, or Cuepoint | `memacc[a]=[b]` | assigns value at address `a` to value at address `b` (e.g., `memacc[3]=[1]` sets value at address `1` to value at address `3`)
+Marker, Text, or Cuepoint | `memacc[a]+=[b]` | adds value at address `b` to value at address `a` (e.g., `memacc[3]+=[2]` adds value at address `2` to value at address `3`)
+Marker, Text, or Cuepoint | `memacc[a]-=[b]` | subtracts value at address `b` from value at address `a` (e.g., `memacc[3]-=[0]` subtracts value at address `0` from value at address `3`)
 
 The classic mid2agb supports some of these features via special unused MIDI CCs. These are not supported since they are non standard and I found text meta events generally easier to insert with most MIDI software, so this is why I implemented it this way.
 
